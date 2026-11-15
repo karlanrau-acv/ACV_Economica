@@ -201,38 +201,37 @@ with tab0:
         nome_grupo_agregado = st.text_input("Nome do setor residual agregado:", value="Demais Setores Agregados")
 
         if len(linhas_escolhidas) > 0 and len(linhas_escolhidas) == len(colunas_escolhidas):
+            df_Z_agg = agregar_matriz_retangular_ou_quadrada(df_Z_raw, linhas_escolhidas, colunas_escolhidas, nome_grupo_agregado)
+            setores_finais_agg = df_Z_agg.columns.tolist()
+            df_Z_agg.index = setores_finais_agg
 
-df_Z_agg = agregar_matriz_retangular_ou_quadrada(df_Z_raw, linhas_escolhidas, colunas_escolhidas, nome_grupo_agregado)
-setores_finais_agg = df_Z_agg.columns.tolist()
-df_Z_agg.index = setores_finais_agg
-st.subheader(f"Pré-visualização da Matriz Z Agregada ({df_Z_agg.shape[0]} × {df_Z_agg.shape[1]})")
-st.dataframe(df_Z_agg.style.format("{:,.2f}"), use_container_width=True)
-df_X_agg = None
-if df_X_raw is not None:
-df_X_agg = agregar_vetor_ou_colunas(df_X_raw.iloc[:1], colunas_escolhidas, nome_grupo_agregado)
-df_X_agg.index = ["Produção Total (x_j)"]
-df_B_agg = None
-if df_B_raw is not None:
-col_asp = df_B_raw.columns[0]
-df_B_agg = agregar_vetor_ou_colunas(df_B_raw.drop(columns=[col_asp]), colunas_escolhidas, nome_grupo_agregado)
-df_B_agg.insert(0, "Aspecto Ambiental (Unidade)", df_B_raw[col_asp])
-if st.button("🚀 Aplicar Agregação aos Fluxos FT1 – FT3", type="primary"):
-st.session_state["agg_setores"] = setores_finais_agg
-st.session_state["agg_Z"] = df_Z_agg
-if df_X_agg is not None:
-st.session_state["agg_X"] = df_X_agg
-if df_B_agg is not None:
-st.session_state["agg_B"] = df_B_agg
-st.success("✅ Dados transferidos com sucesso! Avance para as abas FT1, FT2, FT3 e FT4.")
-elif len(linhas_escolhidas) != len(colunas_escolhidas):
-st.error(f"⚠️ Selecione a mesma quantidade de linhas ({len(linhas_escolhidas)}) e colunas ({len(colunas_escolhidas)}) para formar uma matriz quadrada.")
+            st.subheader(f"Pré-visualização da Matriz Z Agregada ({df_Z_agg.shape[0]} × {df_Z_agg.shape[1]})")
+            st.dataframe(df_Z_agg.style.format("{:,.2f}"), use_container_width=True)
+
+            df_X_agg = None
+            if df_X_raw is not None:
+                df_X_agg = agregar_vetor_ou_colunas(df_X_raw.iloc[:1], colunas_escolhidas, nome_grupo_agregado)
+                df_X_agg.index = ["Produção Total (x_j)"]
+
+            df_B_agg = None
+            if df_B_raw is not None:
+                col_asp = df_B_raw.columns[0]
+                df_B_agg = agregar_vetor_ou_colunas(df_B_raw.drop(columns=[col_asp]), colunas_escolhidas, nome_grupo_agregado)
+                df_B_agg.insert(0, "Aspecto Ambiental (Unidade)", df_B_raw[col_asp])
+
+            if st.button("🚀 Aplicar Agregação aos Fluxos FT1 – FT3", type="primary"):
+                st.session_state["agg_setores"] = setores_finais_agg
+                st.session_state["agg_Z"] = df_Z_agg
+                if df_X_agg is not None:
+                    st.session_state["agg_X"] = df_X_agg
+                if df_B_agg is not None:
+                    st.session_state["agg_B"] = df_B_agg
+                st.success("✅ Dados transferidos com sucesso! Avance para as abas **FT1, FT2, FT3 e FT4**.")
+        elif len(linhas_escolhidas) != len(colunas_escolhidas):
+            st.error(f"⚠️ Selecione a mesma quantidade de linhas ({len(linhas_escolhidas)}) e colunas ({len(colunas_escolhidas)}) para formar uma matriz quadrada.")
 
 ==========================================
-
-
 FLUXO DE TRABALHO 1 (FT1)
-
-
 ==========================================
 
 with tab1:
