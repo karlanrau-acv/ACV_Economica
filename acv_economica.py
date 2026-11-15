@@ -1,32 +1,37 @@
 import io
+import re
 import streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.express as px
-import re
 
+st.set_page_config(
+    page_title="Plataforma ACV Econômica (MIP/TRU)",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ==========================================
+# FUNÇÕES AUXILIARES
+# ==========================================
 def extrair_codigo_4digitos(texto, eh_produto=False):
-    """
-    Extrai o código de 4 dígitos do setor.
-    Se eh_produto=True, recupera o zero à esquerda cortado pelo Excel (ex: 1911 -> 01911 -> 0191).
-    """
     match = re.search(r"\d+", str(texto))
     if not match:
         return ""
     num_str = match.group(0)
     if eh_produto:
-        num_str = num_str.zfill(5)  # Restaura o 5º dígito (zero à esquerda) perdido no Excel
+        num_str = num_str.zfill(5)
         return num_str[:4]
     else:
-        num_str = num_str.zfill(4)  # Garante 4 dígitos no código do setor (ex: 191 -> 0191)
+        num_str = num_str.zfill(4)
         return num_str[:4]
 
 def ler_tabela_upload(arquivo, tem_indice=True, tem_coluna_codigo_produto=False):
-    """Lê arquivos .xlsx ou .csv preservando zeros à esquerda e evitando duplicação de código no nome."""
     nome = arquivo.name.lower()
     if tem_coluna_codigo_produto:
-        idx_col = [0, 1]
-        conversores = {0: str, 1: str}  # Força leitura como texto para não perder zeros à esquerda
+        idx_col =
+        conversores = {0: str, 1: str}
     else:
         idx_col = 0 if tem_indice else None
         conversores = {0: str} if tem_indice else None
@@ -47,10 +52,8 @@ def ler_tabela_upload(arquivo, tem_indice=True, tem_coluna_codigo_produto=False)
         for idx in df.index:
             cod = str(idx).strip()
             desc = str(idx).strip()
-            # Restaura zero à esquerda se for número de 4 dígitos (ex: '1911' -> '01911')
             if cod.isdigit() and len(cod) == 4:
                 cod = cod.zfill(5)
-            # Evita duplicar o código caso a descrição já comece com ele
             if not cod or cod == "nan":
                 novos_indices.append(desc)
             elif desc.startswith(cod) or desc.lstrip("0").startswith(cod.lstrip("0")):
@@ -63,48 +66,34 @@ def ler_tabela_upload(arquivo, tem_indice=True, tem_coluna_codigo_produto=False)
 
     return df
 
-def gerar_template_excel(setores_lista):
-    n = len(setores_lista)
-    output = io.BytesIO()
-    df_z_mod = pd.DataFrame(np.zeros((n, n)), index=setores_lista, columns=setores_lista)
-    df_x_mod = pd.DataFrame(np.ones((1, n)) * 1000.0, index=["Producao_Total_xj"], columns=setores_lista)
-    df_b_mod = pd.DataFrame(np.zeros((2, n)), columns=setores_lista)
-    df_b_mod.insert(0, "Aspecto Ambiental (Unidade)", ["Emissoes GEE (t CO2eq)", "Consumo de Energia (GJ)"])
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df_z_mod.to_excel(writer, sheet_name="Matriz_Z")
-        df_x_mod.to_excel(writer, sheet_name="Producao_X")
-        df_b_mod.to_excel(writer, sheet_name="Matriz_B", index=False)
-    return output.getvalue()
-
 def agregar_matriz_com_mapeamento(df_Z_full, mapa_linhas_para_setor, setores_manter, nome_agregado="Outros"):
-    """
-    Agrega matriz 128x68 (P x S) ou 68x68 (S x S) somando múltiplos produtos (linhas)
-    ao seu setor correspondente, gerando sempre uma matriz quadrada (k+1) x (k+1).
-    """
     df_num = df_Z_full.apply(pd.to_numeric, errors="coerce").fillna(0.0)
     colunas_resto = [c for c in df_num.columns if c not in setores_manter]
 
-    # 1. Agrega as colunas (Setores não selecionados viram 'Outros')
     df_col_agg = df_num[setores_manter].copy()
     if len(colunas_resto) > 0:
         df_col_agg[nome_agregado] = df_num[colunas_resto].sum(axis=1)
 
     ordem_final = setores_manter + ([nome_agregado] if len(colunas_resto) > 0 else [])
 
-    # 2. Agrupa e soma as linhas (Produtos) de acordo com o setor atribuído a cada linha
     df_col_agg["_Setor_Destino_"] = [mapa_linhas_para_setor.get(idx, nome_agregado) for idx in df_col_agg.index]
     df_final = df_col_agg.groupby("_Setor_Destino_").sum()
-
-    # Garante que todos os setores finais existam na mesma ordem nas linhas e colunas
     df_final = df_final.reindex(index=ordem_final, columns=ordem_final).fillna(0.0)
     return df_final
 
-def agregar_vetor_ou_colunas(df_full, colunas_manter, nome_agregado="Demais Setores Agregados"):
-    df_num = df_full.apply(pd.to_numeric, errors="coerce").fillna(0.0)
-    colunas_resto = [c for c in df_num.columns if c not in colunas_manter]
-    df_agg = df_num[colunas_manter].copy()
+def agregar_vetor_producao_x(df_X_full, colunas_Z_originais, setores_manter, nome_agregado="Outros"):
+    """Agrega o vetor x_j (1 x 68) garantindo alinhamento com o cabeçalho da Matriz Z."""
+    df_num = df_X_full.iloc[:1].apply(pd.to_numeric, errors="coerce").fillna(0.0)
+    
+    # Se o número de colunas for igual ao de Z, alinha diretamente pelos cabeçalhos de Z
+    if len(df_num.columns) == len(colunas_Z_originais):
+        df_num.columns = colunas_Z_originais
+
+    colunas_resto = [c for c in df_num.columns if c not in setores_manter]
+    df_agg = df_num[setores_manter].copy()
     if len(colunas_resto) > 0:
         df_agg[nome_agregado] = df_num[colunas_resto].sum(axis=1)
+    df_agg.index = ["Produção Total (x_j)"]
     return df_agg
 
 # ==========================================
@@ -118,217 +107,31 @@ with st.sidebar:
     $$q = R_s \cdot (I - A)^{-1} \cdot y_s$$
     
     **Fluxos de Trabalho:**
-    * **Aba 0:** Agregar matrizes completas (68×68 ou 128×68).
-    * **FT1:** Definir função, setores e Demanda Final ($y_s$).
-    * **FT2:** Calcular Matriz $A$ e Inversa de Leontief ($L$).
-    * **FT3:** Calcular Coeficientes Ambientais ($R_s$).
-    * **FT4:** Quantificar $q$ e analisar *hotspots*.
+    * **FT1:** Definir função e demanda final ($y_s$).
+    * **FT2:** Carregar/Agregar Matriz $Z$ e $x_j$ $\rightarrow$ obter $A$ e $L$.
+    * **FT3:** Inserir cargas ambientais ($B$) nos setores agregados $\rightarrow$ obter $R_s$.
+    * **FT4:** Quantificar $q$ e interpretar resultados.
     """)
-    st.divider()
-    
-    st.subheader("📂 Importação Rápida (Já Agregada)")
-    arquivo_mestre = st.file_uploader(
-        "Carregar Planilha Agregada (.xlsx)",
-        type=["xlsx", "xls"],
-        key="upload_mestre"
-    )
-    placeholder_template = st.empty()
-    
     st.divider()
     if st.button("🔄 Restaurar Exemplo Padrão", use_container_width=True):
         st.session_state.clear()
         st.rerun()
 
 st.title("📊 Avaliação do Ciclo de Vida Baseada em Dados Econômicos")
-st.markdown("Agregação de tabelas **IBGE / NEREUS** e quantificação do inventário ambiental via **Matriz Insumo-Produto**.")
+st.markdown("Quantificação de inventário ambiental via **Matriz Insumo-Produto (MIP) / Tabela de Recursos e Usos (TRU)**.")
 
-tab0, tab1, tab2, tab3, tab4 = st.tabs([
-    "0️⃣ Agregador TRU / MIP (IBGE/NEREUS)",
+tab1, tab2, tab3, tab4 = st.tabs([
     "1️⃣ FT1: Escopo e Demanda (y_s)",
     "2️⃣ FT2: Matriz Econômica (Z, A e L)",
     "3️⃣ FT3: Matriz Ambiental (B e R_s)",
     "4️⃣ FT4: Cálculo e Interpretação (q)"
 ])
 
-with tab0:
-    st.header("0️⃣ Ferramenta de Agregação Automática (TRU 128×68 ou MIP 68×68)")
-    st.markdown("""
-    Carregue sua tabela completa do **IBGE ou NEREUS** e marque apenas os **Produtos (ou Setores) de interesse** no quadro abaixo:
-    1. O sistema identifica automaticamente os **setores (colunas)** vinculados pelo código de 4 dígitos.
-    2. Produtos **não marcados** (mesmo pertencentes a setores selecionados) e setores sem produtos marcados são somados automaticamente na linha e coluna **"Outros"**.
-    """)
-
-    c_tipo, c_cod = st.columns([1.5, 1])
-    with c_tipo:
-        tipo_tabela = st.radio(
-            "Formato da tabela de fluxos intermediários (Z):",
-            options=[
-                "Tabela de Recursos e Usos — Produto × Setor (128 × 68)",
-                "Matriz Quadrada — Setor × Setor (68 × 68)"
-            ],
-            horizontal=True
-        )
-    with c_cod:
-        possui_col_codigo = st.checkbox(
-            "A 1ª coluna da planilha contém o Código do Produto (e a 2ª o Nome)?",
-            value=True,
-            help="Marque se a planilha tem 2 colunas de identificação à esquerda (ex: Coluna A = Código 06801, Coluna B = Nome do Produto)."
-        )
-
-    col_agg1, col_agg2, col_agg3 = st.columns(3)
-    with col_agg1:
-        up_full_Z = st.file_uploader("1. Tabela Z Completa (128×68 ou 68×68) [Obrigatório]", type=["csv", "xlsx"], key="up_full_z")
-    with col_agg2:
-        up_full_X = st.file_uploader("2. Vetor Produção Total x_j (1×68) [Opcional]", type=["csv", "xlsx"], key="up_full_x")
-    with col_agg3:
-        up_full_B = st.file_uploader("3. Matriz Ambiental B (m×68) [Opcional]", type=["csv", "xlsx"], key="up_full_b")
-
-    if up_full_Z is None:
-        if st.button("🧪 Carregar Exemplo Sintético com Códigos IBGE (128×68) para Testar"):
-            setores_sim = [f"{i:04d} - Setor_{i:02d}" for i in range(1, 69)]
-            setores_sim = "0680 - Extração de Petróleo e Gás"
-            setores_sim = "2010 - Fabricação de Resinas e Químicos"
-            setores_sim = "2091 - Fabricação de Tintas e Vernizes"
-
-            np.random.seed(42)
-            prods_sim = [f"{(i % 68) + 1:04d}1 - Produto_{i:03d}" for i in range(1, 129)]
-            prods_sim = "06801 - Petróleo bruto"
-            prods_sim = "06802 - Gás natural (não selecionado vai para Outros)"
-            prods_sim = "20101 - Resinas termoplásticas"
-            prods_sim = "20102 - Solventes e aditivos químicos"
-            prods_sim = "20911 - Tintas e vernizes"
-
-            st.session_state["sim_Z_full"] = pd.DataFrame(np.random.uniform(10, 500, (128, 68)), index=prods_sim, columns=setores_sim)
-            st.session_state["sim_X_full"] = pd.DataFrame([np.random.uniform(40000, 150000, 68)], index=["Producao_Total"], columns=setores_sim)
-            df_b_sim = pd.DataFrame(np.random.uniform(100, 10000, (2, 68)), columns=setores_sim)
-            df_b_sim.insert(0, "Aspecto Ambiental (Unidade)", ["Emissões GEE (t CO2eq)", "Consumo de Energia (GJ)"])
-            st.session_state["sim_B_full"] = df_b_sim
-
-    df_Z_raw, df_X_raw, df_B_raw = None, None, None
-    try:
-        if up_full_Z is not None:
-            usar_duas_cols = possui_col_codigo and ("128 × 68" in tipo_tabela)
-            df_Z_raw = ler_tabela_upload(up_full_Z, tem_indice=True, tem_coluna_codigo_produto=usar_duas_cols)
-            if up_full_X is not None:
-                df_X_raw = ler_tabela_upload(up_full_X, tem_indice=True)
-            if up_full_B is not None:
-                df_B_raw = ler_tabela_upload(up_full_B, tem_indice=False)
-        elif "sim_Z_full" in st.session_state:
-            df_Z_raw = st.session_state["sim_Z_full"]
-            df_X_raw = st.session_state.get("sim_X_full")
-            df_B_raw = st.session_state.get("sim_B_full")
-    except Exception as e:
-        st.error(f"Erro ao ler os arquivos carregados: {e}")
-
-    if df_Z_raw is not None:
-        st.success(f"✅ Matriz carregada com dimensão: **{df_Z_raw.shape} linhas × {df_Z_raw.shape} colunas**.")
-        todas_linhas = df_Z_raw.index.tolist()
-        todas_colunas = df_Z_raw.columns.tolist()
-        nome_grupo_agregado = "Outros"
-
-        # Mapeia código de 4 dígitos -> Nome do Setor (Coluna)
-        mapa_cod_setor = {}
-        for col_setor in todas_colunas:
-            cod4 = extrair_codigo_4digitos(col_setor)
-            if cod4:
-                mapa_cod_setor[cod4] = col_setor
-
-        # Identifica automaticamente o setor correspondente de cada linha (produto)
-        setor_correspondente_linha = []
-        for linha in todas_linhas:
-            if "Setor × Setor" in tipo_tabela and linha in todas_colunas:
-                setor_correspondente_linha.append(linha)
-            else:
-                cod4 = extrair_codigo_4digitos(linha, eh_produto=True)
-                setor_correspondente_linha.append(mapa_cod_setor.get(cod4, "Sem código correspondente"))
-
-        st.subheader("Selecione os Produtos / Setores de Interesse (Linhas)")
-        st.caption("Marque apenas os itens desejados. Os setores (colunas) serão ativados automaticamente e todos os itens não marcados serão somados em **'Outros'**.")
-
-        # Pré-seleciona o exemplo ilustrativo caso os códigos existam
-        exemplos_padrao = ["06801 - Petróleo bruto", "20101 - Resinas termoplásticas", "20102 - Solventes e aditivos químicos", "20911 - Tintas e vernizes"]
-        selecao_inicial = [l in exemplos_padrao for l in todas_linhas]
-        if not any(selecao_inicial) and len(todas_linhas) >= 3:
-            selecao_inicial[:3] = [True, True, True]
-
-        df_quadro_unico = pd.DataFrame({
-            "Selecionar": selecao_inicial,
-            "Produto / Linha (Código e Descrição)": todas_linhas,
-            "Setor Vinculado Automaticamente (Coluna)": setor_correspondente_linha
-        })
-
-        df_editado = st.data_editor(
-            df_quadro_unico,
-            hide_index=True,
-            use_container_width=True,
-            height=360,
-            disabled=["Produto / Linha (Código e Descrição)", "Setor Vinculado Automaticamente (Coluna)"],
-            key="quadro_selecao_unica"
-        )
-
-        # Filtra apenas as linhas marcadas pelo usuário
-        df_marcados = df_editado[df_editado["Selecionar"] == True]
-
-        if len(df_marcados) > 0:
-            # 1. Descobre quais setores (colunas) foram ativados pelos produtos marcados (mantendo a ordem original)
-            setores_ativados_set = set(df_marcados["Setor Vinculado Automaticamente (Coluna)"]) - {"Sem código correspondente"}
-            colunas_escolhidas = [c for c in todas_colunas if c in setores_ativados_set]
-
-            # Alerta caso algum item marcado não tenha encontrado setor pelo código
-            sem_vinculo = df_marcados[df_marcados["Setor Vinculado Automaticamente (Coluna)"] == "Sem código correspondente"]["Produto / Linha (Código e Descrição)"].tolist()
-            if len(sem_vinculo) > 0:
-                st.warning(f"⚠️ Os itens a seguir não possuem código compatível com nenhuma coluna e serão somados em 'Outros': **{', '.join(sem_vinculo)}**")
-
-            # 2. Mapeamento das linhas:
-            #    - Linhas MARCADAS vão para o seu respectivo setor
-            #    - Linhas NÃO MARCADAS (mesmo do mesmo setor) vão para "Outros"
-            mapa_linhas = {}
-            for _, row in df_editado.iterrows():
-                prod = row["Produto / Linha (Código e Descrição)"]
-                setor_dest = row["Setor Vinculado Automaticamente (Coluna)"]
-                if row["Selecionar"] and setor_dest in colunas_escolhidas:
-                    mapa_linhas[prod] = setor_dest
-                else:
-                    mapa_linhas[prod] = nome_grupo_agregado
-
-            if len(colunas_escolhidas) > 0:
-                st.info(f"📌 **Setores (Colunas) ativados automaticamente ({len(colunas_escolhidas)}):** {', '.join(colunas_escolhidas)} + **Outros**")
-
-                df_Z_agg = agregar_matriz_com_mapeamento(df_Z_raw, mapa_linhas, colunas_escolhidas, nome_grupo_agregado)
-                setores_finais_agg = df_Z_agg.columns.tolist()
-
-                st.subheader(f"Pré-visualização da Matriz Z Agregada ({df_Z_agg.shape} × {df_Z_agg.shape})")
-                st.dataframe(df_Z_agg.style.format("{:,.2f}"), use_container_width=True)
-
-                df_X_agg = None
-                if df_X_raw is not None:
-                    df_X_agg = agregar_vetor_ou_colunas(df_X_raw.iloc[:1], colunas_escolhidas, nome_grupo_agregado)
-                    df_X_agg.index = ["Produção Total (x_j)"]
-
-                df_B_agg = None
-                if df_B_raw is not None:
-                    col_asp = df_B_raw.columns
-                    df_B_agg = agregar_vetor_ou_colunas(df_B_raw.drop(columns=[col_asp]), colunas_escolhidas, nome_grupo_agregado)
-                    df_B_agg.insert(0, "Aspecto Ambiental (Unidade)", df_B_raw[col_asp])
-
-                if st.button("🚀 Aplicar Agregação aos Fluxos FT1 – FT3", type="primary"):
-                    st.session_state["agg_setores"] = setores_finais_agg
-                    st.session_state["agg_Z"] = df_Z_agg
-                    if df_X_agg is not None:
-                        st.session_state["agg_X"] = df_X_agg
-                    if df_B_agg is not None:
-                        st.session_state["agg_B"] = df_B_agg
-                    st.success("✅ Dados transferidos com sucesso! Todos os produtos e setores não selecionados foram somados em 'Outros'. Avance para **FT1 – FT4**.")
-            else:
-                st.error("❌ Nenhum dos itens marcados possui código correspondente aos setores (colunas). Verifique se a caixa de código do produto está marcada corretamente.")
-        else:
-            st.warning("⚠️ Marque pelo menos 1 produto/setor no quadro acima para gerar a matriz agregada.")
-
 # ==========================================
 # FLUXO DE TRABALHO 1 (FT1)
 # ==========================================
 with tab1:
-    st.header("1º Fluxo de Trabalho (FT1): Função, Setores e Demanda Final ($y_s$)")
+    st.header("1º Fluxo de Trabalho (FT1): Função do Sistema, Cadeia Produtiva e Demanda Final ($y_s$)")
     
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -339,24 +142,22 @@ with tab1:
         unidade_monetaria = st.text_input("Unidade Monetária das Tabelas:", value="R$ Milhões")
 
     st.subheader("Setores da Cadeia Produtiva e Demanda Final ($y_s$)")
+    st.info("💡 **Dica:** Se você vai importar uma tabela completa (128×68 ou 68×68) no **FT2**, pode ir direto para o **FT2** selecionar os produtos/setores; a lista abaixo será atualizada automaticamente com os setores agregados para você preencher apenas a Demanda Final ($y_s$).")
 
-    if "agg_setores" in st.session_state:
-        st.info("ℹ️ Setores carregados automaticamente da **Aba 0 (Agregador)**.")
-        setores_ini = st.session_state["agg_setores"]
+    if "setores_agregados_ft2" in st.session_state:
+        setores_ini = st.session_state["setores_agregados_ft2"]
         demandas_ini = [0.0] * len(setores_ini)
-        if len(demandas_ini) >= 3:
-            demandas_ini = 0.001
         df_ft1_inicial = pd.DataFrame({
-            "Setor Econômico": setores_ini,
+            "Setor Econômico (Agregado no FT2)": setores_ini,
             "Demanda Final (y_s)": demandas_ini
         })
     else:
         df_ft1_inicial = pd.DataFrame({
-            "Setor Econômico": [
-                "Extração de Petróleo e Gás",
-                "Fabricação de Resinas e Químicos",
-                "Fabricação de Tintas e Vernizes",
-                "Demais Setores Agregados"
+            "Setor Econômico (Agregado no FT2)": [
+                "0680 - Extração de Petróleo e Gás",
+                "2010 - Fabricação de Resinas e Químicos",
+                "2091 - Fabricação de Tintas e Vernizes",
+                "Outros"
             ],
             "Demanda Final (y_s)": [0.0, 0.0, 0.001, 0.0]
         })
@@ -368,41 +169,25 @@ with tab1:
         key="editor_eco_ft1"
     )
 
-    df_limpo = df_ft1.dropna(subset=["Setor Econômico"]).copy()
-    df_limpo["Setor Econômico"] = df_limpo["Setor Econômico"].astype(str).str.strip()
-    df_limpo = df_limpo[df_limpo["Setor Econômico"] != ""]
+    df_limpo = df_ft1.dropna(subset=["Setor Econômico (Agregado no FT2)"]).copy()
+    df_limpo["Setor Econômico (Agregado no FT2)"] = df_limpo["Setor Econômico (Agregado no FT2)"].astype(str).str.strip()
+    df_limpo = df_limpo[df_limpo["Setor Econômico (Agregado no FT2)"] != ""]
 
-    setores = df_limpo["Setor Econômico"].tolist()
+    setores_ft1 = df_limpo["Setor Econômico (Agregado no FT2)"].tolist()
     y_s_vetor = pd.to_numeric(df_limpo["Demanda Final (y_s)"], errors="coerce").fillna(0.0).tolist()
 
-    if len(setores) != len(set(setores)):
-        st.error("⚠️ Existem setores com nomes duplicados. Renomeie-os para evitar conflitos nas matrizes.")
-
-    if len(setores) > 0:
-        try:
-            excel_bytes = gerar_template_excel(setores)
-            placeholder_template.download_button(
-                label="📥 Baixar Modelo Excel (.xlsx) Atual",
-                data=excel_bytes,
-                file_name="template_acv_economica.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
-        except Exception:
-            pass
-
     st.subheader("Diagrama de Setores e Demanda Final")
-    if len(setores) > 0:
+    if len(setores_ft1) > 0:
         dot_code = 'digraph G {\n  rankdir=LR;\n  node [shape=box, style="rounded,filled", fontname="Arial"];\n'
         for _, row in df_limpo.iterrows():
-            nome = row["Setor Econômico"].replace('"', '')
+            nome = row["Setor Econômico (Agregado no FT2)"].replace('"', '')
             demanda = row["Demanda Final (y_s)"] if pd.notna(row["Demanda Final (y_s)"]) else 0.0
             cor_fundo = "#d1ecf1" if demanda > 0 else "#f8f9fa"
             cor_borda = "#0c5460" if demanda > 0 else "#6c757d"
             dot_code += f'  "{nome}" [fillcolor="{cor_fundo}", color="{cor_borda}", label="{nome}\\n(y_s = {demanda} {unidade_monetaria})"];\n'
-        for i in range(len(setores) - 1):
-            s1 = setores[i].replace('"', '')
-            s2 = setores[i+1].replace('"', '')
+        for i in range(len(setores_ft1) - 1):
+            s1 = setores_ft1[i].replace('"', '')
+            s2 = setores_ft1[i+1].replace('"', '')
             dot_code += f'  "{s1}" -> "{s2}" [style=dashed, color="#adb5bd"];\n'
         dot_code += '}'
         st.graphviz_chart(dot_code)
@@ -411,80 +196,176 @@ with tab1:
 # FLUXO DE TRABALHO 2 (FT2)
 # ==========================================
 with tab2:
-    st.header("2º Fluxo de Trabalho (FT2): Matriz $Z$, Coeficientes Técnicos ($A$) e Leontief ($L$)")
-    
-    if len(setores) == 0:
-        st.warning("Defina pelo menos um setor econômico no FT1.")
-    elif len(setores) != len(set(setores)):
-        st.warning("Corrija os nomes duplicados no FT1 antes de continuar.")
-    else:
-        n = len(setores)
-        
-        if n == 4 and setores == [
-            "Extração de Petróleo e Gás",
-            "Fabricação de Resinas e Químicos",
-            "Fabricação de Tintas e Vernizes",
-            "Demais Setores Agregados"
-        ]:
-            z_padrao = np.array([
-                [15000.0, 45000.0,   500.0, 80000.0],
-                [ 2000.0, 25000.0,  6000.0, 40000.0],
-                [  300.0,   800.0,  1200.0, 14000.0],
-                [30000.0, 35000.0,  5500.0, 900000.0]
-            ])
-            x_padrao = np.array([[200000.0, 150000.0, 20000.0, 2500000.0]])
-        else:
-            z_padrao = np.zeros((n, n))
-            x_padrao = np.ones((1, n)) * 1000.0
+    st.header("2º Fluxo de Trabalho (FT2): Tabela Z, Produção Total ($x_j$), Coeficientes ($A$) e Leontief ($L$)")
 
-        df_Z_inicial = pd.DataFrame(z_padrao, index=setores, columns=setores)
-        df_X_inicial = pd.DataFrame(x_padrao, index=["Produção Total (x_j)"], columns=setores)
+    modo_ft2 = st.radio(
+        "Modo de entrada dos dados econômicos:",
+        options=[
+            "📂 Importar e Agregar Tabela Completa (TRU 128×68 ou MIP 68×68)",
+            "✍️ Editar Manualmente a Matriz Z já Agregada"
+        ],
+        horizontal=True
+    )
 
-        if "agg_Z" in st.session_state:
-            df_Z_inicial = st.session_state["agg_Z"].reindex(index=setores, columns=setores).fillna(0.0)
-        if "agg_X" in st.session_state:
-            df_X_inicial = st.session_state["agg_X"].reindex(columns=setores).fillna(0.0)
-            df_X_inicial.index = ["Produção Total (x_j)"]
+    if modo_ft2 == "📂 Importar e Agregar Tabela Completa (TRU 128×68 ou MIP 68×68)":
+        c_tipo, c_cod = st.columns([1.5, 1])
+        with c_tipo:
+            tipo_tabela = st.radio(
+                "Formato da Matriz Z:",
+                options=[
+                    "Tabela de Recursos e Usos — Produto × Setor (128 × 68)",
+                    "Matriz Quadrada — Setor × Setor (68 × 68)"
+                ],
+                horizontal=True
+            )
+        with c_cod:
+            possui_col_codigo = st.checkbox(
+                "A 1ª coluna contém o Código do Produto (e a 2ª o Nome)?",
+                value=True
+            )
 
-        with st.expander("📤 Importar Matriz Z e Produção Total (x_j) já agregadas via CSV/Excel", expanded=False):
-            col_up1, col_up2 = st.columns(2)
-            with col_up1:
-                up_Z = st.file_uploader("Upload Matriz Z (n x n)", type=["csv", "xlsx"], key="up_z")
-            with col_up2:
-                up_X = st.file_uploader("Upload Vetor Produção Total x_j (1 x n)", type=["csv", "xlsx"], key="up_x")
+        col_up1, col_up2 = st.columns(2)
+        with col_up1:
+            up_full_Z = st.file_uploader("1. Tabela Z Completa (128×68 ou 68×68) [Obrigatório]", type=["csv", "xlsx"], key="up_full_z_ft2")
+        with col_up2:
+            up_full_X = st.file_uploader("2. Vetor Produção Total x_j (1×68) [Mesmo cabeçalho da Matriz Z]", type=["csv", "xlsx"], key="up_full_x_ft2")
 
+        if up_full_Z is None:
+            if st.button("🧪 Carregar Exemplo Sintético IBGE (128×68) para Testar"):
+                setores_sim = [f"{i:04d} - Setor_{i:02d}" for i in range(1, 69)]
+                setores_sim[0] = "0680 - Extração de Petróleo e Gás"
+                setores_sim[1] = "2010 - Fabricação de Resinas e Químicos"
+                setores_sim[2] = "2091 - Fabricação de Tintas e Vernizes"
+
+                np.random.seed(42)
+                prods_sim = [f"{(i % 68) + 1:04d}1 - Produto_{i:03d}" for i in range(1, 129)]
+                prods_sim[0] = "06801 - Petróleo bruto"
+                prods_sim[1] = "06802 - Gás natural"
+                prods_sim[2] = "20101 - Resinas termoplásticas"
+                prods_sim[3] = "20102 - Solventes e aditivos"
+                prods_sim[4] = "20911 - Tintas e vernizes"
+
+                st.session_state["sim_Z_ft2"] = pd.DataFrame(np.random.uniform(10, 500, (128, 68)), index=prods_sim, columns=setores_sim)
+                st.session_state["sim_X_ft2"] = pd.DataFrame([np.random.uniform(40000, 150000, 68)], index=["Producao_Total"], columns=setores_sim)
+
+        df_Z_raw, df_X_raw = None, None
         try:
-            if up_Z is not None:
-                df_z_lido = ler_tabela_upload(up_Z, tem_indice=True)
-                df_Z_inicial = df_z_lido.reindex(index=setores, columns=setores).fillna(0.0)
-            elif arquivo_mestre is not None:
-                xl = pd.ExcelFile(arquivo_mestre)
-                if "Matriz_Z" in xl.sheet_names:
-                    df_z_lido = pd.read_excel(xl, sheet_name="Matriz_Z", index_col=0)
-                    df_z_lido.columns = [str(c).strip() for c in df_z_lido.columns]
-                    df_z_lido.index = [str(i).strip() for i in df_z_lido.index]
-                    df_Z_inicial = df_z_lido.reindex(index=setores, columns=setores).fillna(0.0)
-
-            if up_X is not None:
-                df_x_lido = ler_tabela_upload(up_X, tem_indice=True)
-                df_X_inicial = df_x_lido.reindex(columns=setores).iloc[:1].fillna(0.0)
-                df_X_inicial.index = ["Produção Total (x_j)"]
-            elif arquivo_mestre is not None:
-                xl = pd.ExcelFile(arquivo_mestre)
-                if "Producao_X" in xl.sheet_names:
-                    df_x_lido = pd.read_excel(xl, sheet_name="Producao_X", index_col=0)
-                    df_x_lido.columns = [str(c).strip() for c in df_x_lido.columns]
-                    df_X_inicial = df_x_lido.reindex(columns=setores).iloc[:1].fillna(0.0)
-                    df_X_inicial.index = ["Produção Total (x_j)"]
+            if up_full_Z is not None:
+                usar_duas_cols = possui_col_codigo and ("128 × 68" in tipo_tabela)
+                df_Z_raw = ler_tabela_upload(up_full_Z, tem_indice=True, tem_coluna_codigo_produto=usar_duas_cols)
+                if up_full_X is not None:
+                    df_X_raw = ler_tabela_upload(up_full_X, tem_indice=True)
+            elif "sim_Z_ft2" in st.session_state:
+                df_Z_raw = st.session_state["sim_Z_ft2"]
+                df_X_raw = st.session_state.get("sim_X_ft2")
         except Exception as e:
-            st.error(f"Erro ao ler arquivo no FT2: {e}")
+            st.error(f"Erro ao ler os arquivos no FT2: {e}")
 
-        st.subheader(f"1. Matriz de Fluxos Intermediários ($Z$) — [{unidade_monetaria}]")
-        df_Z = st.data_editor(df_Z_inicial, use_container_width=True, key="editor_eco_Z")
+        if df_Z_raw is not None:
+            st.success(f"✅ Matriz Z carregada: **{df_Z_raw.shape[0]} linhas × {df_Z_raw.shape[1]} colunas**.")
+            todas_linhas = df_Z_raw.index.tolist()
+            todas_colunas = df_Z_raw.columns.tolist()
+            nome_agregado = "Outros"
 
-        st.subheader(f"2. Valor da Produção Total Setorial ($x_j$) — [{unidade_monetaria}]")
-        df_X = st.data_editor(df_X_inicial, use_container_width=True, key="editor_eco_X")
+            mapa_cod_setor = {}
+            for col_setor in todas_colunas:
+                cod4 = extrair_codigo_4digitos(col_setor, eh_produto=False)
+                if cod4:
+                    mapa_cod_setor[cod4] = col_setor
 
+            setor_correspondente_linha = []
+            for linha in todas_linhas:
+                if "Setor × Setor" in tipo_tabela and linha in todas_colunas:
+                    setor_correspondente_linha.append(linha)
+                else:
+                    cod4 = extrair_codigo_4digitos(linha, eh_produto=True)
+                    setor_correspondente_linha.append(mapa_cod_setor.get(cod4, "Sem código correspondente"))
+
+            st.subheader("Selecione os Produtos / Setores de Interesse (Linhas)")
+            st.caption("Marque os itens desejados. Os setores (colunas) relacionados serão ativados automaticamente e os demais somados em **'Outros'**.")
+
+            exemplos_padrao = ["06801 - Petróleo bruto", "20101 - Resinas termoplásticas", "20102 - Solventes e aditivos", "20911 - Tintas e vernizes"]
+            selecao_inicial = [l in exemplos_padrao for l in todas_linhas]
+            if not any(selecao_inicial) and len(todas_linhas) >= 3:
+                selecao_inicial[:3] = [True, True, True]
+
+            df_quadro = pd.DataFrame({
+                "Selecionar": selecao_inicial,
+                "Produto / Linha": todas_linhas,
+                "Setor Vinculado (Coluna)": setor_correspondente_linha
+            })
+
+            df_editado = st.data_editor(
+                df_quadro,
+                hide_index=True,
+                use_container_width=True,
+                height=320,
+                disabled=["Produto / Linha", "Setor Vinculado (Coluna)"],
+                key="quadro_ft2_selecao"
+            )
+
+            df_marcados = df_editado[df_editado["Selecionar"] == True]
+            if len(df_marcados) > 0:
+                setores_ativados_set = set(df_marcados["Setor Vinculado (Coluna)"]) - {"Sem código correspondente"}
+                colunas_escolhidas = [c for c in todas_colunas if c in setores_ativados_set]
+
+                mapa_linhas = {}
+                for _, row in df_editado.iterrows():
+                    prod = row["Produto / Linha"]
+                    setor_dest = row["Setor Vinculado (Coluna)"]
+                    mapa_linhas[prod] = setor_dest if (row["Selecionar"] and setor_dest in colunas_escolhidas) else nome_agregado
+
+                if len(colunas_escolhidas) > 0:
+                    df_Z_agg = agregar_matriz_com_mapeamento(df_Z_raw, mapa_linhas, colunas_escolhidas, nome_agregado)
+                    setores_ativos = df_Z_agg.columns.tolist()
+
+                    if st.session_state.get("setores_agregados_ft2") != setores_ativos:
+                        st.session_state["setores_agregados_ft2"] = setores_ativos
+
+                    if df_X_raw is not None:
+                        df_X_agg = agregar_vetor_producao_x(df_X_raw, todas_colunas, colunas_escolhidas, nome_agregado)
+                    else:
+                        df_X_agg = pd.DataFrame(np.ones((1, len(setores_ativos))) * 1000.0, index=["Produção Total (x_j)"], columns=setores_ativos)
+
+                    st.subheader(f"Matriz Z Agregada ({len(setores_ativos)} × {len(setores_ativos)}) — [{unidade_monetaria}]")
+                    df_Z = st.data_editor(df_Z_agg, use_container_width=True, key="editor_Z_agregada")
+
+                    st.subheader(f"Produção Total Setorial Agregada ($x_j$) — [{unidade_monetaria}]")
+                    df_X = st.data_editor(df_X_agg, use_container_width=True, key="editor_X_agregada")
+                else:
+                    st.error("❌ Nenhum produto selecionado possui código correspondente às colunas de Z.")
+            else:
+                st.warning("⚠️ Marque pelo menos 1 item no quadro acima.")
+    else:
+        setores_ativos = setores_ft1
+        n_man = len(setores_ativos)
+        if n_man > 0:
+            if n_man == 4 and setores_ativos == [
+                "0680 - Extração de Petróleo e Gás",
+                "2010 - Fabricação de Resinas e Químicos",
+                "2091 - Fabricação de Tintas e Vernizes",
+                "Outros"
+            ]:
+                z_pad = np.array([
+                    [15000.0, 45000.0,   500.0, 80000.0],
+                    [ 2000.0, 25000.0,  6000.0, 40000.0],
+                    [  300.0,   800.0,  1200.0, 14000.0],
+                    [30000.0, 35000.0,  5500.0, 900000.0]
+                ])
+                x_pad = np.array([[200000.0, 150000.0, 20000.0, 2500000.0]])
+            else:
+                z_pad = np.zeros((n_man, n_man))
+                x_pad = np.ones((1, n_man)) * 1000.0
+
+            st.subheader(f"1. Matriz de Fluxos Intermediários ($Z$) — [{unidade_monetaria}]")
+            df_Z = st.data_editor(pd.DataFrame(z_pad, index=setores_ativos, columns=setores_ativos), use_container_width=True, key="editor_Z_manual")
+
+            st.subheader(f"2. Valor da Produção Total Setorial ($x_j$) — [{unidade_monetaria}]")
+            df_X = st.data_editor(pd.DataFrame(x_pad, index=["Produção Total (x_j)"], columns=setores_ativos), use_container_width=True, key="editor_X_manual")
+
+    if "df_Z" in locals() and "df_X" in locals():
+        setores_finais = df_Z.columns.tolist()
+        n = len(setores_finais)
         Z_mat = df_Z.apply(pd.to_numeric, errors="coerce").fillna(0.0).to_numpy()
         X_vec = df_X.apply(pd.to_numeric, errors="coerce").fillna(0.0).to_numpy().flatten()
 
@@ -492,43 +373,69 @@ with tab2:
             st.error("⚠️ O Valor da Produção Total (x_j) deve ser maior que zero para todos os setores.")
         else:
             A_mat = Z_mat / X_vec[np.newaxis, :]
-            I_mat = np.eye(n)
-            I_minus_A = I_mat - A_mat
+            I_minus_A = np.eye(n) - A_mat
 
             col_a, col_l = st.columns(2)
             with col_a:
                 st.markdown("**Matriz de Coeficientes Técnicos ($A_{ij} = z_{ij} / x_j$)**")
-                df_A = pd.DataFrame(A_mat, index=setores, columns=setores)
+                df_A = pd.DataFrame(A_mat, index=setores_finais, columns=setores_finais)
                 st.dataframe(df_A.style.format("{:.4f}"), use_container_width=True)
 
             with col_l:
                 st.markdown("**Matriz Inversa de Leontief ($L = (I - A)^{-1}$)**")
                 if np.isclose(np.linalg.det(I_minus_A), 0.0):
                     st.error("❌ A matriz (I - A) é singular (não inversível). Verifique os valores de Z e x_j.")
-               
                 else:
                     L_mat = np.linalg.inv(I_minus_A)
-                    df_L = pd.DataFrame(L_mat, index=setores, columns=setores)
+                    df_L = pd.DataFrame(L_mat, index=setores_finais, columns=setores_finais)
                     st.dataframe(df_L.style.format("{:.4f}"), use_container_width=True)
-                    st.success("✅ Matrizes A e L calculadas com sucesso!")
+                    st.success("✅ Matrizes A e L prontas! Siga para o **FT3**.")
 
 # ==========================================
 # FLUXO DE TRABALHO 3 (FT3)
 # ==========================================
 with tab3:
-    st.header("3º Fluxo de Trabalho (FT3): Aspectos Ambientais ($B$) e Coeficientes ($R_s$)")
+    st.header("3º Fluxo de Trabalho (FT3): Matriz Ambiental ($B$) e Coeficientes ($R_s$)")
 
-    if len(setores) == 0:
-        st.warning("Defina os setores no FT1 primeiro.")
-    elif "X_vec" not in locals() or np.any(X_vec <= 0):
-        st.warning("Preencha valores válidos para a Produção Total (x_j) no FT2 primeiro.")
+    if "setores_finais" not in locals() or "X_vec" not in locals() or np.any(X_vec <= 0):
+        st.warning("⚠️ Complete a etapa econômica no **FT2** primeiro para carregar os setores agregados.")
     else:
-        n = len(setores)
-        if n == 4 and setores == [
-            "Extração de Petróleo e Gás",
-            "Fabricação de Resinas e Químicos",
-            "Fabricação de Tintas e Vernizes",
-            "Demais Setores Agregados"
+        n = len(setores_finais)
+        st.info(f"📌 Os cabeçalhos da Matriz Ambiental estão sincronizados com os **{n} setores** resultantes do FT2.")
+
+        # Gera modelo Excel pronto da Matriz Ambiental B com os setores exatos do FT2
+        def gerar_modelo_B_excel(cols_setores):
+            out = io.BytesIO()
+            df_mod = pd.DataFrame(np.zeros((2, len(cols_setores))), columns=cols_setores)
+            df_mod.insert(0, "Aspecto Ambiental (Unidade)", ["Emissoes GEE (t CO2eq)", "Consumo de Energia (GJ)"])
+            with pd.ExcelWriter(out, engine="openpyxl") as writer:
+                df_mod.to_excel(writer, sheet_name="Matriz_B", index=False)
+            return out.getvalue()
+
+        col_mod1, col_mod2 = st.columns([1, 1.5])
+        with col_mod1:
+            try:
+                st.download_button(
+                    label="📥 Baixar Modelo Excel da Matriz B",
+                    data=gerar_modelo_B_excel(setores_finais),
+                    file_name="modelo_matriz_ambiental_B.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+            except Exception:
+                pass
+        with col_mod2:
+            up_B_ft3 = st.file_uploader(
+                "Ou faça upload da Matriz Ambiental B já agregada (.xlsx ou .csv)",
+                type=["xlsx", "csv"],
+                key="up_b_ft3"
+            )
+
+        if n == 4 and setores_finais == [
+            "0680 - Extração de Petróleo e Gás",
+            "2010 - Fabricação de Resinas e Químicos",
+            "2091 - Fabricação de Tintas e Vernizes",
+            "Outros"
         ]:
             b_padrao = np.array([
                 [42000.0, 28000.0,  1800.0, 350000.0],
@@ -537,49 +444,35 @@ with tab3:
         else:
             b_padrao = np.zeros((2, n))
 
-        df_B_inicial = pd.DataFrame(b_padrao, columns=setores)
+        df_B_inicial = pd.DataFrame(b_padrao, columns=setores_finais)
         df_B_inicial.insert(0, "Aspecto Ambiental (Unidade)", ["Emissões GEE (t CO2eq)", "Consumo de Energia (GJ)"])
 
-        if "agg_B" in st.session_state:
-            cols_finais = ["Aspecto Ambiental (Unidade)"] + setores
-            df_B_inicial = st.session_state["agg_B"].reindex(columns=cols_finais).fillna(0.0)
-
-        with st.expander("📤 Importar Matriz Ambiental (B) já agregada via CSV/Excel", expanded=False):
-            up_B = st.file_uploader("Upload Matriz Ambiental B", type=["csv", "xlsx"], key="up_b")
-
-        try:
-            if up_B is not None:
-                df_b_lido = ler_tabela_upload(up_B, tem_indice=False)
+        if up_B_ft3 is not None:
+            try:
+                df_b_lido = ler_tabela_upload(up_B_ft3, tem_indice=False)
                 col_nome = df_b_lido.columns[0]
                 df_b_lido.rename(columns={col_nome: "Aspecto Ambiental (Unidade)"}, inplace=True)
-                cols_finais = ["Aspecto Ambiental (Unidade)"] + setores
-                df_B_inicial = df_b_lido.reindex(columns=cols_finais).fillna(0.0)
-            elif arquivo_mestre is not None:
-                xl = pd.ExcelFile(arquivo_mestre)
-                if "Matriz_B" in xl.sheet_names:
-                    df_b_lido = pd.read_excel(xl, sheet_name="Matriz_B")
-                    df_b_lido.columns = [str(c).strip() for c in df_b_lido.columns]
-                    col_nome = df_b_lido.columns[0]
-                    df_b_lido.rename(columns={col_nome: "Aspecto Ambiental (Unidade)"}, inplace=True)
-                    cols_finais = ["Aspecto Ambiental (Unidade)"] + setores
-                    df_B_inicial = df_b_lido.reindex(columns=cols_finais).fillna(0.0)
-        except Exception as e:
-            st.error(f"Erro ao ler arquivo no FT3: {e}")
+                cols_esperadas = ["Aspecto Ambiental (Unidade)"] + setores_finais
+                df_B_inicial = df_b_lido.reindex(columns=cols_esperadas).fillna(0.0)
+                st.success("✅ Matriz Ambiental B carregada com sucesso!")
+            except Exception as e:
+                st.error(f"Erro ao ler Matriz B: {e}")
 
         st.subheader("1. Matriz de Cargas Ambientais Totais por Setor ($B$)")
+        st.caption("Digite os valores diretamente na tabela abaixo (use '+' na base para adicionar mais indicadores ambientais):")
         df_B = st.data_editor(
             df_B_inicial,
             num_rows="dynamic",
             use_container_width=True,
-            key="editor_eco_B"
+            key="editor_eco_B_ft3"
         )
 
         nomes_aspectos = df_B["Aspecto Ambiental (Unidade)"].fillna("Aspecto sem nome").tolist()
-        B_mat = df_B[setores].apply(pd.to_numeric, errors="coerce").fillna(0.0).to_numpy()
+        B_mat = df_B[setores_finais].apply(pd.to_numeric, errors="coerce").fillna(0.0).to_numpy()
         Rs_mat = B_mat / X_vec[np.newaxis, :]
 
         st.subheader(f"2. Matriz de Coeficientes Técnicos Ambientais ($R_s$) — [Unidade Ambiental / {unidade_monetaria}]")
-        df_Rs = pd.DataFrame(Rs_mat, index=nomes_aspectos, columns=setores)
+        df_Rs = pd.DataFrame(Rs_mat, index=nomes_aspectos, columns=setores_finais)
         st.dataframe(df_Rs.style.format("{:.6f}"), use_container_width=True)
 
 # ==========================================
@@ -588,21 +481,27 @@ with tab3:
 with tab4:
     st.header("4º Fluxo de Trabalho (FT4): Quantificação do Inventário ($q$) e Interpretação")
 
-    if len(setores) == 0:
-        st.warning("Complete os fluxos anteriores para visualizar os resultados.")
-    elif "L_mat" not in locals() or "Rs_mat" not in locals():
-        st.warning("⚠️ Certifique-se de que as matrizes dos passos FT2 e FT3 foram preenchidas corretamente sem erros.")
+    if "L_mat" not in locals() or "Rs_mat" not in locals() or "setores_finais" not in locals():
+        st.warning("⚠️ Complete os passos nos fluxos FT1, FT2 e FT3 para visualizar os resultados.")
     else:
         try:
-            y_vec = np.array(y_s_vetor, dtype=float).reshape(-1, 1)
-            n = len(setores)
+            n = len(setores_finais)
             m = len(nomes_aspectos)
 
-            if L_mat.shape != (n, n) or Rs_mat.shape != (m, n) or y_vec.shape != (n, 1):
-                st.error(
-                    f"⚠️ Desalinhamento de dimensões: L={L_mat.shape}, Rs={Rs_mat.shape}, y={y_vec.shape}. "
-                    "Verifique as abas anteriores."
+            if len(y_s_vetor) == n:
+                y_vec = np.array(y_s_vetor, dtype=float).reshape(-1, 1)
+            else:
+                st.warning("⚠️ Os setores foram atualizados no FT2. Ajuste a **Demanda Final ($y_s$)** abaixo ou na aba **FT1**:")
+                df_y_rapido = st.data_editor(
+                    pd.DataFrame({"Setor": setores_finais, "Demanda Final (y_s)": [0.0] * n}),
+                    hide_index=True,
+                    use_container_width=True,
+                    key="y_rapido_ft4"
                 )
+                y_vec = pd.to_numeric(df_y_rapido["Demanda Final (y_s)"], errors="coerce").fillna(0.0).to_numpy().reshape(-1, 1)
+
+            if L_mat.shape != (n, n) or Rs_mat.shape != (m, n) or y_vec.shape != (n, 1):
+                st.error(f"⚠️ Desalinhamento de dimensões: L={L_mat.shape}, Rs={Rs_mat.shape}, y={y_vec.shape}.")
                 st.stop()
 
             producao_induzida = np.dot(L_mat, y_vec)
@@ -616,7 +515,7 @@ with tab4:
 
             with col_res1:
                 st.markdown(f"**Produção Total Induzida na Economia ($x_{{ind}} = L \cdot y_s$) [{unidade_monetaria}]**")
-                df_prod_ind = pd.DataFrame(producao_induzida, index=setores, columns=["Produção Induzida"])
+                df_prod_ind = pd.DataFrame(producao_induzida, index=setores_finais, columns=["Produção Induzida"])
                 st.dataframe(df_prod_ind.style.format("{:.6f}"), use_container_width=True)
 
                 st.markdown("**Carga Ambiental Total do Sistema ($q = R_s \cdot L \cdot y_s$)**")
@@ -625,7 +524,7 @@ with tab4:
 
             with col_res2:
                 st.markdown("**Contribuição por Setor Econômico (Análise de Hotspots)**")
-                df_contrib = pd.DataFrame(contrib_setorial, index=nomes_aspectos, columns=setores)
+                df_contrib = pd.DataFrame(contrib_setorial, index=nomes_aspectos, columns=setores_finais)
                 st.dataframe(df_contrib.style.format("{:.6f}"), use_container_width=True)
 
                 modo_grafico = st.radio(
@@ -685,4 +584,3 @@ with tab4:
 
         except Exception as e:
             st.error(f"❌ Ocorreu um erro inesperado no cálculo: {e}")
-
