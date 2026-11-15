@@ -37,7 +37,6 @@ def ler_tabela_upload(arquivo, tem_indice=True, tem_coluna_codigo_produto=False)
 
     return df
 
-
 def gerar_template_excel(setores_lista):
     n = len(setores_lista)
     output = io.BytesIO()
@@ -128,8 +127,9 @@ tab0, tab1, tab2, tab3, tab4 = st.tabs([
 with tab0:
     st.header("0️⃣ Ferramenta de Agregação Automática (TRU 128×68 ou MIP 68×68)")
     st.markdown("""
-    Carregue sua tabela completa do **IBGE ou NEREUS**. 
-    * Se a sua tabela tiver o **código do produto na 1ª coluna** e o **código do setor no cabeçalho**, o sistema identificará e somará automaticamente todos os produtos pertencentes a cada setor selecionado!
+    Carregue sua tabela completa do **IBGE ou NEREUS** e marque apenas os **Produtos (ou Setores) de interesse** no quadro abaixo:
+    1. O sistema identifica automaticamente os **setores (colunas)** vinculados pelo código de 4 dígitos.
+    2. Produtos **não marcados** (mesmo pertencentes a setores selecionados) e setores sem produtos marcados são somados automaticamente na linha e coluna **"Outros"**.
     """)
 
     c_tipo, c_cod = st.columns([1.5, 1])
@@ -167,7 +167,7 @@ with tab0:
             np.random.seed(42)
             prods_sim = [f"{(i % 68) + 1:04d}1 - Produto_{i:03d}" for i in range(1, 129)]
             prods_sim = "06801 - Petróleo bruto"
-            prods_sim = "06802 - Gás natural"
+            prods_sim = "06802 - Gás natural (não selecionado vai para Outros)"
             prods_sim = "20101 - Resinas termoplásticas"
             prods_sim = "20102 - Solventes e aditivos químicos"
             prods_sim = "20911 - Tintas e vernizes"
@@ -200,128 +200,103 @@ with tab0:
         todas_colunas = df_Z_raw.columns.tolist()
         nome_grupo_agregado = "Outros"
 
-        if "Setor × Setor" in tipo_tabela:
-            st.subheader("Selecione nos quadros abaixo os setores a manter desagregados")
-            opcoes = [c for c in todas_colunas if c in todas_linhas] or todas_colunas
-            df_quadro_setores = pd.DataFrame({
-                "Manter Desagregado?": [False] * len(opcoes),
-                "Setor (Linha e Coluna)": opcoes
-            })
-            if len(opcoes) >= 3:
-                df_quadro_setores.loc[:2, "Manter Desagregado?"] = True
+        # Mapeia código de 4 dígitos -> Nome do Setor (Coluna)
+        mapa_cod_setor = {}
+        for col_setor in todas_colunas:
+            cod4 = extrair_codigo_4digitos(col_setor)
+            if cod4:
+                mapa_cod_setor[cod4] = col_setor
 
-            df_sel_s = st.data_editor(
-                df_quadro_setores,
-                hide_index=True,
-                use_container_width=True,
-                height=320,
-                disabled=["Setor (Linha e Coluna)"],
-                key="quadro_sel_sxs"
-            )
-            colunas_escolhidas = df_sel_s[df_sel_s["Manter Desagregado?"] == True]["Setor (Linha e Coluna)"].tolist()
-            mapa_linhas = {s: s for s in colunas_escolhidas}
+        # Identifica automaticamente o setor correspondente de cada linha (produto)
+        setor_correspondente_linha = []
+        for linha in todas_linhas:
+            if "Setor × Setor" in tipo_tabela and linha in todas_colunas:
+                setor_correspondente_linha.append(linha)
+            else:
+                cod4 = extrair_codigo_4digitos(linha)
+                setor_correspondente_linha.append(mapa_cod_setor.get(cod4, "Sem código correspondente"))
 
+        st.subheader("Selecione os Produtos / Setores de Interesse (Linhas)")
+        st.caption("Marque apenas os itens desejados. Os setores (colunas) serão ativados automaticamente e todos os itens não marcados serão somados em **'Outros'**.")
+
+        # Pré-seleciona o exemplo ilustrativo caso os códigos existam
+        exemplos_padrao = ["06801 - Petróleo bruto", "20101 - Resinas termoplásticas", "20102 - Solventes e aditivos químicos", "20911 - Tintas e vernizes"]
+        selecao_inicial = [l in exemplos_padrao for l in todas_linhas]
+        if not any(selecao_inicial) and len(todas_linhas) >= 3:
+            selecao_inicial[:3] = [True, True, True]
+
+        df_quadro_unico = pd.DataFrame({
+            "Selecionar": selecao_inicial,
+            "Produto / Linha (Código e Descrição)": todas_linhas,
+            "Setor Vinculado Automaticamente (Coluna)": setor_correspondente_linha
+        })
+
+        df_editado = st.data_editor(
+            df_quadro_unico,
+            hide_index=True,
+            use_container_width=True,
+            height=360,
+            disabled=["Produto / Linha (Código e Descrição)", "Setor Vinculado Automaticamente (Coluna)"],
+            key="quadro_selecao_unica"
+        )
+
+        # Filtra apenas as linhas marcadas pelo usuário
+        df_marcados = df_editado[df_editado["Selecionar"] == True]
+
+        if len(df_marcados) > 0:
+            # 1. Descobre quais setores (colunas) foram ativados pelos produtos marcados (mantendo a ordem original)
+            setores_ativados_set = set(df_marcados["Setor Vinculado Automaticamente (Coluna)"]) - {"Sem código correspondente"}
+            colunas_escolhidas = [c for c in todas_colunas if c in setores_ativados_set]
+
+            # Alerta caso algum item marcado não tenha encontrado setor pelo código
+            sem_vinculo = df_marcados[df_marcados["Setor Vinculado Automaticamente (Coluna)"] == "Sem código correspondente"]["Produto / Linha (Código e Descrição)"].tolist()
+            if len(sem_vinculo) > 0:
+                st.warning(f"⚠️ Os itens a seguir não possuem código compatível com nenhuma coluna e serão somados em 'Outros': **{', '.join(sem_vinculo)}**")
+
+            # 2. Mapeamento das linhas:
+            #    - Linhas MARCADAS vão para o seu respectivo setor
+            #    - Linhas NÃO MARCADAS (mesmo do mesmo setor) vão para "Outros"
+            mapa_linhas = {}
+            for _, row in df_editado.iterrows():
+                prod = row["Produto / Linha (Código e Descrição)"]
+                setor_dest = row["Setor Vinculado Automaticamente (Coluna)"]
+                if row["Selecionar"] and setor_dest in colunas_escolhidas:
+                    mapa_linhas[prod] = setor_dest
+                else:
+                    mapa_linhas[prod] = nome_grupo_agregado
+
+            if len(colunas_escolhidas) > 0:
+                st.info(f"📌 **Setores (Colunas) ativados automaticamente ({len(colunas_escolhidas)}):** {', '.join(colunas_escolhidas)} + **Outros**")
+
+                df_Z_agg = agregar_matriz_com_mapeamento(df_Z_raw, mapa_linhas, colunas_escolhidas, nome_grupo_agregado)
+                setores_finais_agg = df_Z_agg.columns.tolist()
+
+                st.subheader(f"Pré-visualização da Matriz Z Agregada ({df_Z_agg.shape} × {df_Z_agg.shape})")
+                st.dataframe(df_Z_agg.style.format("{:,.2f}"), use_container_width=True)
+
+                df_X_agg = None
+                if df_X_raw is not None:
+                    df_X_agg = agregar_vetor_ou_colunas(df_X_raw.iloc[:1], colunas_escolhidas, nome_grupo_agregado)
+                    df_X_agg.index = ["Produção Total (x_j)"]
+
+                df_B_agg = None
+                if df_B_raw is not None:
+                    col_asp = df_B_raw.columns
+                    df_B_agg = agregar_vetor_ou_colunas(df_B_raw.drop(columns=[col_asp]), colunas_escolhidas, nome_grupo_agregado)
+                    df_B_agg.insert(0, "Aspecto Ambiental (Unidade)", df_B_raw[col_asp])
+
+                if st.button("🚀 Aplicar Agregação aos Fluxos FT1 – FT3", type="primary"):
+                    st.session_state["agg_setores"] = setores_finais_agg
+                    st.session_state["agg_Z"] = df_Z_agg
+                    if df_X_agg is not None:
+                        st.session_state["agg_X"] = df_X_agg
+                    if df_B_agg is not None:
+                        st.session_state["agg_B"] = df_B_agg
+                    st.success("✅ Dados transferidos com sucesso! Todos os produtos e setores não selecionados foram somados em 'Outros'. Avance para **FT1 – FT4**.")
+            else:
+                st.error("❌ Nenhum dos itens marcados possui código correspondente aos setores (colunas). Verifique se a caixa de código do produto está marcada corretamente.")
         else:
-            col_q1, col_q2 = st.columns([1, 1.3])
-            with col_q1:
-                st.markdown("**1º Passo: Marque os Setores (Colunas - 68)**")
-                df_quadro_set = pd.DataFrame({
-                    "Selecionar": [False] * len(todas_colunas),
-                    "Setor (Coluna)": todas_colunas
-                })
-                if len(todas_colunas) >= 3:
-                    df_quadro_set.loc[:2, "Selecionar"] = True
-
-                df_sel_c = st.data_editor(
-                    df_quadro_set,
-                    hide_index=True,
-                    use_container_width=True,
-                    height=350,
-                    disabled=["Setor (Coluna)"],
-                    key="quadro_sel_set_pxs"
-                )
-                colunas_escolhidas = df_sel_c[df_sel_c["Selecionar"] == True]["Setor (Coluna)"].tolist()
-
-            with col_q2:
-                st.markdown("**2º Passo: Produtos Associados Automaticamente pelo Código (Editável)**")
-                opcoes_destino = [nome_grupo_agregado] + colunas_escolhidas
-
-                # Mapeia o código de 4 dígitos de cada setor selecionado -> nome completo do setor
-                cod_para_setor = {}
-                for s in colunas_escolhidas:
-                    cod4 = extrair_codigo_4digitos(s)
-                    if cod4:
-                        cod_para_setor[cod4] = s
-
-                # Associa automaticamente cada produto (5 dígitos) ao setor (4 dígitos iniciais)
-                destinos_auto = []
-                qtd_associados = 0
-                for p in todas_linhas:
-                    cod4_prod = extrair_codigo_4digitos(p)
-                    if cod4_prod in cod_para_setor:
-                        destinos_auto.append(cod_para_setor[cod4_prod])
-                        qtd_associados += 1
-                    else:
-                        destinos_auto.append(nome_grupo_agregado)
-
-                if qtd_associados > 0:
-                    st.caption(f"🔗 **{qtd_associados} produto(s)** vinculados automaticamente pelos 4 primeiros dígitos do código!")
-
-                df_quadro_prod = pd.DataFrame({
-                    "Produto (Código e Descrição)": todas_linhas,
-                    "Somar no Setor:": destinos_auto
-                })
-
-                df_sel_p = st.data_editor(
-                    df_quadro_prod,
-                    hide_index=True,
-                    use_container_width=True,
-                    height=350,
-                    disabled=["Produto (Código e Descrição)"],
-                    column_config={
-                        "Somar no Setor:": st.column_config.SelectboxColumn(
-                            "Somar no Setor:",
-                            help="Vinculado automaticamente pelo código. Você pode alterar manualmente se desejar.",
-                            options=opcoes_destino,
-                            required=True
-                        )
-                    },
-                    key="quadro_map_prod_pxs"
-                )
-                mapa_linhas = dict(zip(df_sel_p["Produto (Código e Descrição)"], df_sel_p["Somar no Setor:"]))
-
-        if len(colunas_escolhidas) > 0:
-            setores_sem_produto = [s for s in colunas_escolhidas if s not in mapa_linhas.values()]
-            if "128 × 68" in tipo_tabela and len(setores_sem_produto) > 0:
-                st.warning(f"⚠️ Os seguintes setores selecionados não têm nenhum produto vinculado no Quadro 2: **{', '.join(setores_sem_produto)}**")
-
-            df_Z_agg = agregar_matriz_com_mapeamento(df_Z_raw, mapa_linhas, colunas_escolhidas, nome_grupo_agregado)
-            setores_finais_agg = df_Z_agg.columns.tolist()
-
-            st.subheader(f"Pré-visualização da Matriz Z Agregada ({df_Z_agg.shape} × {df_Z_agg.shape})")
-            st.dataframe(df_Z_agg.style.format("{:,.2f}"), use_container_width=True)
-
-            df_X_agg = None
-            if df_X_raw is not None:
-                df_X_agg = agregar_vetor_ou_colunas(df_X_raw.iloc[:1], colunas_escolhidas, nome_grupo_agregado)
-                df_X_agg.index = ["Produção Total (x_j)"]
-
-            df_B_agg = None
-            if df_B_raw is not None:
-                col_asp = df_B_raw.columns
-                df_B_agg = agregar_vetor_ou_colunas(df_B_raw.drop(columns=[col_asp]), colunas_escolhidas, nome_grupo_agregado)
-                df_B_agg.insert(0, "Aspecto Ambiental (Unidade)", df_B_raw[col_asp])
-
-            if st.button("🚀 Aplicar Agregação aos Fluxos FT1 – FT3", type="primary"):
-                st.session_state["agg_setores"] = setores_finais_agg
-                st.session_state["agg_Z"] = df_Z_agg
-                if df_X_agg is not None:
-                    st.session_state["agg_X"] = df_X_agg
-                if df_B_agg is not None:
-                    st.session_state["agg_B"] = df_B_agg
-                st.success("✅ Dados transferidos com sucesso (demais itens agrupados em 'Outros')! Avance para as abas **FT1, FT2, FT3 e FT4**.")
-        else:
-            st.warning("⚠️ Marque pelo menos 1 setor no quadro acima para gerar a matriz agregada.")
+            st.warning("⚠️ Marque pelo menos 1 produto/setor no quadro acima para gerar a matriz agregada.")
 
 # ==========================================
 # FLUXO DE TRABALHO 1 (FT1)
