@@ -214,3 +214,111 @@ with tab3:
 
         st.subheader(f"2. Matriz de Coeficientes Técnicos Ambientais ($R_s$) — [Unidade Ambiental / {unidade_monetaria}]")
         df_Rs = pd.DataFrame(Rs_mat, index=nomes_aspectos, columns=setores)
+
+# ==========================================
+# FLUXO DE TRABALHO 4 (FT4)
+# ==========================================
+with tab4:
+    st.header("4º Fluxo de Trabalho (FT4): Quantificação do Inventário ($q$) e Interpretação")
+
+    if len(setores) == 0:
+        st.warning("Complete os fluxos anteriores para visualizar os resultados.")
+    elif "L_mat" not in locals() or "Rs_mat" not in locals():
+        st.warning("⚠️ Certifique-se de que as matrizes dos passos FT2 e FT3 foram preenchidas corretamente sem erros.")
+    else:
+        try:
+            y_vec = np.array(y_s_vetor, dtype=float).reshape(-1, 1)
+            n = len(setores)
+            m = len(nomes_aspectos)
+
+            # Correção: Rs_mat tem dimensão (m, n), onde m = nº de aspectos e n = nº de setores
+            if L_mat.shape != (n, n) or Rs_mat.shape != (m, n) or y_vec.shape != (n, 1):
+                st.error(
+                    f"⚠️ Desalinhamento de dimensões: L={L_mat.shape}, Rs={Rs_mat.shape}, y={y_vec.shape}. "
+                    "Verifique as abas anteriores."
+                )
+                st.stop()
+
+            # Equação fundamental: q = Rs * (I - A)^(-1) * y_s
+            producao_induzida = np.dot(L_mat, y_vec)           # Vetor x_induzido = L * y_s (dimensão n x 1)
+            q_total = np.dot(Rs_mat, producao_induzida)        # Vetor q = Rs * L * y_s (dimensão m x 1)
+            contrib_setorial = Rs_mat * producao_induzida.T    # Contribuição de cada setor (dimensão m x n)
+
+            st.subheader(f"Resultados para: {uf_economica}")
+            st.caption(f"**Função do Sistema:** {funcao}")
+
+            col_res1, col_res2 = st.columns(2)
+
+            with col_res1:
+                st.markdown(f"**Produção Total Induzida na Economia ($x_{{ind}} = L \cdot y_s$) [{unidade_monetaria}]**")
+                df_prod_ind = pd.DataFrame(producao_induzida, index=setores, columns=["Produção Induzida"])
+                st.dataframe(df_prod_ind.style.format("{:.6f}"), use_container_width=True)
+
+                st.markdown("**Carga Ambiental Total do Sistema ($q = R_s \cdot L \cdot y_s$)**")
+                df_q_total = pd.DataFrame(q_total, index=nomes_aspectos, columns=["Carga Total (q)"])
+                st.dataframe(df_q_total.style.format("{:.6f}"), use_container_width=True)
+
+            with col_res2:
+                st.markdown("**Contribuição por Setor Econômico (Análise de Hotspots)**")
+                df_contrib = pd.DataFrame(contrib_setorial, index=nomes_aspectos, columns=setores)
+                st.dataframe(df_contrib.style.format("{:.6f}"), use_container_width=True)
+
+                # Seletor de escala para visualização gráfica
+                modo_grafico = st.radio(
+                    "Escala de visualização do gráfico:",
+                    options=[
+                        "Valores Absolutos",
+                        "Normalizado (Log10)",
+                        "Relativo (100% Empilhado)"
+                    ],
+                    horizontal=True,
+                    help="Em ACV Econômica, emissões (kg) e energia (MJ/GJ) costumam ter ordens de grandeza muito distintas. Use Log10 ou Relativo (%) para comparar."
+                )
+
+                if modo_grafico == "Normalizado (Log10)":
+                    df_transf = np.sign(df_contrib) * np.log10(np.abs(df_contrib) + 1)
+                    eixo_y_label = "Log10(|Carga| + 1)"
+                    titulo_grafico = "Contribuição por Setor (Escala Log10)"
+                    modo_barra = "group"
+                elif modo_grafico == "Relativo (100% Empilhado)":
+                    somas = df_contrib.abs().sum(axis=1).replace(0, 1)
+                    df_transf = df_contrib.div(somas, axis=0) * 100
+                    eixo_y_label = "Participação (%)"
+                    titulo_grafico = "Participação Relativa de Cada Setor (%)"
+                    modo_barra = "stack"
+                else:
+                    df_transf = df_contrib.copy()
+                    eixo_y_label = "Carga Ambiental"
+                    titulo_grafico = "Participação Setorial na Carga Ambiental Total"
+                    modo_barra = "stack"
+
+                df_plot = df_transf.reset_index().melt(id_vars="index", var_name="Setor", value_name="Valor")
+                df_plot.rename(columns={"index": "Aspecto Ambiental"}, inplace=True)
+
+                fig = px.bar(
+                    df_plot,
+                    x="Aspecto Ambiental",
+                    y="Valor",
+                    color="Setor",
+                    title=titulo_grafico,
+                    labels={"Valor": eixo_y_label},
+                    barmode=modo_barra,
+                    text_auto='.2f'
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+            # Exportação completa para Excel/CSV
+            st.divider()
+            df_export = df_contrib.copy()
+            df_export["Carga Total (q)"] = q_total
+            csv = df_export.to_csv(sep=";", decimal=",").encode("utf-8-sig")
+
+            st.download_button(
+                label="📥 Baixar Relatório do Inventário Econômico (CSV)",
+                data=csv,
+                file_name="inventario_acv_economica.csv",
+                mime="text/csv"
+            )
+
+        except Exception as e:
+            st.error(f"❌ Ocorreu um erro inesperado no cálculo: {e}")
