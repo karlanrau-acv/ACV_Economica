@@ -5,33 +5,59 @@ import pandas as pd
 import plotly.express as px
 import re
 
-def extrair_codigo_4digitos(texto):
-    """Extrai os 4 primeiros dígitos numéricos de um código de produto (5 dígitos) ou setor (4 dígitos)."""
-    numeros = re.sub(r"\D", "", str(texto))
-    return numeros[:4] if len(numeros) >= 4 else ""
+def extrair_codigo_4digitos(texto, eh_produto=False):
+    """
+    Extrai o código de 4 dígitos do setor.
+    Se eh_produto=True, recupera o zero à esquerda cortado pelo Excel (ex: 1911 -> 01911 -> 0191).
+    """
+    match = re.search(r"\d+", str(texto))
+    if not match:
+        return ""
+    num_str = match.group(0)
+    if eh_produto:
+        num_str = num_str.zfill(5)  # Restaura o 5º dígito (zero à esquerda) perdido no Excel
+        return num_str[:4]
+    else:
+        num_str = num_str.zfill(4)  # Garante 4 dígitos no código do setor (ex: 191 -> 0191)
+        return num_str[:4]
 
 def ler_tabela_upload(arquivo, tem_indice=True, tem_coluna_codigo_produto=False):
-    """Lê arquivos .xlsx ou .csv tratando separadores brasileiros e opcionalmente uma coluna extra de código."""
+    """Lê arquivos .xlsx ou .csv preservando zeros à esquerda e evitando duplicação de código no nome."""
     nome = arquivo.name.lower()
     if tem_coluna_codigo_produto:
-        idx_col = [0, 1]
+        idx_col =
+        conversores = {0: str, 1: str}  # Força leitura como texto para não perder zeros à esquerda
     else:
         idx_col = 0 if tem_indice else None
+        conversores = {0: str} if tem_indice else None
 
     if nome.endswith(".xlsx") or nome.endswith(".xls"):
-        df = pd.read_excel(arquivo, index_col=idx_col)
+        df = pd.read_excel(arquivo, index_col=idx_col, converters=conversores)
     else:
         conteudo = arquivo.getvalue().decode("utf-8-sig", errors="replace")
         sep = ";" if conteudo.count(";") > conteudo.count(",") else ","
         decimal = "," if sep == ";" else "."
-        df = pd.read_csv(io.StringIO(conteudo), sep=sep, decimal=decimal, index_col=idx_col)
+        df = pd.read_csv(io.StringIO(conteudo), sep=sep, decimal=decimal, index_col=idx_col, dtype=str)
+        df = df.apply(pd.to_numeric, errors="ignore")
 
     df.columns = [str(c).strip() for c in df.columns]
 
     if tem_coluna_codigo_produto and isinstance(df.index, pd.MultiIndex):
-        codigos = [str(idx).strip() for idx in df.index]
-        nomes = [str(idx).strip() for idx in df.index]
-        df.index = [f"{c} - {n}" if c and c != "nan" else n for c, n in zip(codigos, nomes)]
+        novos_indices = []
+        for idx in df.index:
+            cod = str(idx).strip()
+            desc = str(idx).strip()
+            # Restaura zero à esquerda se for número de 4 dígitos (ex: '1911' -> '01911')
+            if cod.isdigit() and len(cod) == 4:
+                cod = cod.zfill(5)
+            # Evita duplicar o código caso a descrição já comece com ele
+            if not cod or cod == "nan":
+                novos_indices.append(desc)
+            elif desc.startswith(cod) or desc.lstrip("0").startswith(cod.lstrip("0")):
+                novos_indices.append(desc)
+            else:
+                novos_indices.append(f"{cod} - {desc}")
+        df.index = novos_indices
     elif tem_indice:
         df.index = [str(i).strip() for i in df.index]
 
@@ -213,7 +239,7 @@ with tab0:
             if "Setor × Setor" in tipo_tabela and linha in todas_colunas:
                 setor_correspondente_linha.append(linha)
             else:
-                cod4 = extrair_codigo_4digitos(linha)
+                cod4 = extrair_codigo_4digitos(linha, eh_produto=True)
                 setor_correspondente_linha.append(mapa_cod_setor.get(cod4, "Sem código correspondente"))
 
         st.subheader("Selecione os Produtos / Setores de Interesse (Linhas)")
