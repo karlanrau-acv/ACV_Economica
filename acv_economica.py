@@ -230,9 +230,9 @@ with tab0:
         elif len(linhas_escolhidas) != len(colunas_escolhidas):
             st.error(f"⚠️ Selecione a mesma quantidade de linhas ({len(linhas_escolhidas)}) e colunas ({len(colunas_escolhidas)}) para formar uma matriz quadrada.")
 
-==========================================
-FLUXO DE TRABALHO 1 (FT1)
-==========================================
+# ==========================================
+# FLUXO DE TRABALHO 1 (FT1)
+# ==========================================
 
 with tab1:
 st.header("1º Fluxo de Trabalho (FT1): Função, Setores e Demanda Final ($y_s$)")
@@ -305,13 +305,9 @@ dot_code += f'  "{s1}" -> "{s2}" [style=dashed, color="#adb5bd"];\n'
 dot_code += '}'
 st.graphviz_chart(dot_code)
 
-==========================================
-
-
-FLUXO DE TRABALHO 2 (FT2)
-
-
-==========================================
+# ==========================================
+# FLUXO DE TRABALHO 2 (FT2)
+# ==========================================
 
 with tab2:
 st.header("2º Fluxo de Trabalho (FT2): Matriz $Z$, Coeficientes Técnicos ($A$) e Leontief ($L$)")
@@ -403,13 +399,9 @@ df_L = pd.DataFrame(L_mat, index=setores, columns=setores)
 st.dataframe(df_L.style.format("{:.4f}"), use_container_width=True)
 st.success("✅ Matrizes A e L calculadas com sucesso!")
 
-==========================================
-
-
-FLUXO DE TRABALHO 3 (FT3)
-
-
-==========================================
+# ==========================================
+# FLUXO DE TRABALHO 3 (FT3)
+# ==========================================
 
 with tab3:
 st.header("3º Fluxo de Trabalho (FT3): Aspectos Ambientais ($B$) e Coeficientes ($R_s$)")
@@ -471,13 +463,9 @@ st.subheader(f"2. Matriz de Coeficientes Técnicos Ambientais ($R_s$) — [Unida
 df_Rs = pd.DataFrame(Rs_mat, index=nomes_aspectos, columns=setores)
 st.dataframe(df_Rs.style.format("{:.6f}"), use_container_width=True)
 
-==========================================
-
-
-FLUXO DE TRABALHO 4 (FT4)
-
-
-==========================================
+# ==========================================
+# FLUXO DE TRABALHO 4 (FT4)
+# ==========================================
 
 with tab4:
 st.header("4º Fluxo de Trabalho (FT4): Quantificação do Inventário ($q$) e Interpretação")
