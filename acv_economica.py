@@ -208,7 +208,7 @@ with tab2:
     )
 
     if modo_ft2 == "📂 Importar e Agregar Tabela Completa (TRU 128×68 ou MIP 68×68)":
-        c_tipo, c_cod = st.columns([1.5, 1])
+        c_tipo, c_cod = st.columns(list((1.5, 1)))
         with c_tipo:
             tipo_tabela = st.radio(
                 "Formato da Matriz Z:",
@@ -226,27 +226,27 @@ with tab2:
 
         col_up1, col_up2 = st.columns(2)
         with col_up1:
-            up_full_Z = st.file_uploader("1. Tabela Z Completa (128×68 ou 68×68) [Obrigatório]", type=["csv", "xlsx"], key="up_full_z_ft2")
+            up_full_Z = st.file_uploader("1. Tabela Z Completa (128×68 ou 68×68) [Obrigatório]", type=list(("csv", "xlsx")), key="up_full_z_ft2")
         with col_up2:
-            up_full_X = st.file_uploader("2. Vetor Produção Total x_j (1×68) [Mesmo cabeçalho da Matriz Z]", type=["csv", "xlsx"], key="up_full_x_ft2")
+            up_full_X = st.file_uploader("2. Vetor Produção Total x_j (1×68) [Mesmo cabeçalho da Matriz Z]", type=list(("csv", "xlsx")), key="up_full_x_ft2")
 
         if up_full_Z is None:
             if st.button("🧪 Carregar Exemplo Sintético IBGE (128×68) para Testar"):
                 setores_sim = [f"{i:04d} - Setor_{i:02d}" for i in range(1, 69)]
-                setores_sim[0] = "0680 - Extração de Petróleo e Gás"
-                setores_sim[1] = "2010 - Fabricação de Resinas e Químicos"
-                setores_sim[2] = "2091 - Fabricação de Tintas e Vernizes"
+                setores_sim.__setitem__(0, "0680 - Extração de Petróleo e Gás")
+                setores_sim.__setitem__(1, "2010 - Fabricação de Resinas e Químicos")
+                setores_sim.__setitem__(2, "2091 - Fabricação de Tintas e Vernizes")
 
                 np.random.seed(42)
                 prods_sim = [f"{(i % 68) + 1:04d}1 - Produto_{i:03d}" for i in range(1, 129)]
-                prods_sim[0] = "06801 - Petróleo bruto"
-                prods_sim[1] = "06802 - Gás natural"
-                prods_sim[2] = "20101 - Resinas termoplásticas"
-                prods_sim[3] = "20102 - Solventes e aditivos"
-                prods_sim[4] = "20911 - Tintas e vernizes"
+                prods_sim.__setitem__(0, "06801 - Petróleo bruto")
+                prods_sim.__setitem__(1, "06802 - Gás natural")
+                prods_sim.__setitem__(2, "20101 - Resinas termoplásticas")
+                prods_sim.__setitem__(3, "20102 - Solventes e aditivos")
+                prods_sim.__setitem__(4, "20911 - Tintas e vernizes")
 
                 st.session_state["sim_Z_ft2"] = pd.DataFrame(np.random.uniform(10, 500, (128, 68)), index=prods_sim, columns=setores_sim)
-                st.session_state["sim_X_ft2"] = pd.DataFrame([np.random.uniform(40000, 150000, 68)], index=["Producao_Total"], columns=setores_sim)
+                st.session_state["sim_X_ft2"] = pd.DataFrame([np.random.uniform(40000, 150000, 68)], index=list(("Producao_Total",)), columns=setores_sim)
 
         df_Z_raw, df_X_raw = None, None
         try:
@@ -262,7 +262,7 @@ with tab2:
             st.error(f"Erro ao ler os arquivos no FT2: {e}")
 
         if df_Z_raw is not None:
-            st.success(f"✅ Matriz Z carregada: **{df_Z_raw.shape[0]} linhas × {df_Z_raw.shape[1]} colunas**.")
+            st.success(f"✅ Matriz Z carregada: **{df_Z_raw.shape.__getitem__(0)} linhas × {df_Z_raw.shape.__getitem__(1)} colunas**.")
             todas_linhas = df_Z_raw.index.tolist()
             todas_colunas = df_Z_raw.columns.tolist()
             nome_agregado = "Outros"
@@ -281,13 +281,13 @@ with tab2:
                     cod4 = extrair_codigo_4digitos(linha, eh_produto=True)
                     setor_correspondente_linha.append(mapa_cod_setor.get(cod4, "Sem código correspondente"))
 
-            st.subheader("Selecione os Produtos / Setores de Interesse (Linhas)")
+            st.subheader("1º Passo: Selecione os Produtos / Setores de Interesse (Linhas)")
             st.caption("Marque os itens desejados. Os setores (colunas) relacionados serão ativados automaticamente e os demais somados em **'Outros'**.")
 
-            exemplos_padrao = ["06801 - Petróleo bruto", "20101 - Resinas termoplásticas", "20102 - Solventes e aditivos", "20911 - Tintas e vernizes"]
+            exemplos_padrao = list(("06801 - Petróleo bruto", "20101 - Resinas termoplásticas", "20102 - Solventes e aditivos", "20911 - Tintas e vernizes"))
             selecao_inicial = [l in exemplos_padrao for l in todas_linhas]
             if not any(selecao_inicial) and len(todas_linhas) >= 3:
-                selecao_inicial[:3] = [True, True, True]
+                selecao_inicial[:3] = list((True, True, True))
 
             df_quadro = pd.DataFrame({
                 "Selecionar": selecao_inicial,
@@ -299,8 +299,8 @@ with tab2:
                 df_quadro,
                 hide_index=True,
                 use_container_width=True,
-                height=320,
-                disabled=["Produto / Linha", "Setor Vinculado (Coluna)"],
+                height=300,
+                disabled=list(("Produto / Linha", "Setor Vinculado (Coluna)")),
                 key="quadro_ft2_selecao"
             )
 
@@ -309,25 +309,75 @@ with tab2:
                 setores_ativados_set = set(df_marcados["Setor Vinculado (Coluna)"]) - {"Sem código correspondente"}
                 colunas_escolhidas = [c for c in todas_colunas if c in setores_ativados_set]
 
-                mapa_linhas = {}
-                for _, row in df_editado.iterrows():
-                    prod = row["Produto / Linha"]
-                    setor_dest = row["Setor Vinculado (Coluna)"]
-                    mapa_linhas[prod] = setor_dest if (row["Selecionar"] and setor_dest in colunas_escolhidas) else nome_agregado
-
                 if len(colunas_escolhidas) > 0:
-                    df_Z_agg = agregar_matriz_com_mapeamento(df_Z_raw, mapa_linhas, colunas_escolhidas, nome_agregado)
+                    # ==============================================================
+                    # NOVO PASSO: AGRUPAR E/OU RENOMEAR SETORES RESULTANTES
+                    # ==============================================================
+                    st.subheader("2º Passo: Agrupar ou Renomear Setores Resultantes (Opcional)")
+                    st.caption("Edite a coluna **'Novo Nome do Setor (Editável)'**. Para **unir** dois ou mais setores em um novo setor agregado, basta atribuir a eles o **mesmo nome**.")
+
+                    df_renomear = pd.DataFrame({
+                        "Setor Original Ativado": colunas_escolhidas,
+                        "Novo Nome do Setor (Editável)": colunas_escolhidas
+                    })
+
+                    df_renomeado_edit = st.data_editor(
+                        df_renomear,
+                        hide_index=True,
+                        use_container_width=True,
+                        disabled=list(("Setor Original Ativado",)),
+                        key="editor_renomear_setores_ft2"
+                    )
+
+                    # Cria dicionário: Setor Original -> Novo Nome Escolhido
+                    mapa_renomeacao = {}
+                    for _, r_row in df_renomeado_edit.iterrows():
+                        orig = r_row["Setor Original Ativado"]
+                        novo = str(r_row["Novo Nome do Setor (Editável)"]).strip()
+                        mapa_renomeacao[orig] = novo if novo and novo != "nan" else orig
+
+                    # 1. Gera matriz intermediária com os setores escolhidos + Outros
+                    mapa_linhas_orig = {}
+                    for _, row in df_editado.iterrows():
+                        prod = row["Produto / Linha"]
+                        setor_dest = row["Setor Vinculado (Coluna)"]
+                        mapa_linhas_orig[prod] = setor_dest if (row["Selecionar"] and setor_dest in colunas_escolhidas) else nome_agregado
+
+                    df_Z_interm = agregar_matriz_com_mapeamento(df_Z_raw, mapa_linhas_orig, colunas_escolhidas, nome_agregado)
+
+                    if df_X_raw is not None:
+                        df_X_interm = agregar_vetor_producao_x(df_X_raw, todas_colunas, colunas_escolhidas, nome_agregado)
+                    else:
+                        df_X_interm = pd.DataFrame(np.ones((1, len(df_Z_interm.columns))) * 1000.0, index=list(("Produção Total (x_j)",)), columns=df_Z_interm.columns)
+
+                    # 2. Aplica a fusão e renomeação dos setores (somando linhas e colunas com o mesmo novo nome)
+                    novos_nomes_cols = [mapa_renomeacao.get(c, c) for c in df_Z_interm.columns]
+                    
+                    # Ordem preservada sem duplicatas
+                    ordem_final_renomeada = []
+                    for nome_s in novos_nomes_cols:
+                        if nome_s not in ordem_final_renomeada:
+                            ordem_final_renomeada.append(nome_s)
+
+                    df_Z_agg = df_Z_interm.copy()
+                    df_Z_agg.columns = novos_nomes_cols
+                    df_Z_agg.index = novos_nomes_cols
+                    # Soma colunas com mesmo nome e depois linhas com mesmo nome
+                    df_Z_agg = df_Z_agg.T.groupby(level=0).sum().T.groupby(level=0).sum()
+                    df_Z_agg = df_Z_agg.reindex(index=ordem_final_renomeada, columns=ordem_final_renomeada).fillna(0.0)
+
+                    df_X_agg = df_X_interm.copy()
+                    df_X_agg.columns = novos_nomes_cols
+                    df_X_agg = df_X_agg.T.groupby(level=0).sum().T
+                    df_X_agg = df_X_agg.reindex(columns=ordem_final_renomeada).fillna(0.0)
+                    df_X_agg.index = list(("Produção Total (x_j)",))
+
                     setores_ativos = df_Z_agg.columns.tolist()
 
                     if st.session_state.get("setores_agregados_ft2") != setores_ativos:
                         st.session_state["setores_agregados_ft2"] = setores_ativos
 
-                    if df_X_raw is not None:
-                        df_X_agg = agregar_vetor_producao_x(df_X_raw, todas_colunas, colunas_escolhidas, nome_agregado)
-                    else:
-                        df_X_agg = pd.DataFrame(np.ones((1, len(setores_ativos))) * 1000.0, index=["Produção Total (x_j)"], columns=setores_ativos)
-
-                    st.subheader(f"Matriz Z Agregada ({len(setores_ativos)} × {len(setores_ativos)}) — [{unidade_monetaria}]")
+                    st.subheader(f"3º Passo: Matriz Z Agregada Final ({len(setores_ativos)} × {len(setores_ativos)}) — [{unidade_monetaria}]")
                     df_Z = st.data_editor(df_Z_agg, use_container_width=True, key="editor_Z_agregada")
 
                     st.subheader(f"Produção Total Setorial Agregada ($x_j$) — [{unidade_monetaria}]")
@@ -340,12 +390,12 @@ with tab2:
         setores_ativos = setores_ft1
         n_man = len(setores_ativos)
         if n_man > 0:
-            if n_man == 4 and setores_ativos == [
+            if n_man == 4 and setores_ativos == list((
                 "0680 - Extração de Petróleo e Gás",
                 "2010 - Fabricação de Resinas e Químicos",
                 "2091 - Fabricação de Tintas e Vernizes",
                 "Outros"
-            ]:
+            )):
                 z_pad = np.array([
                     [15000.0, 45000.0,   500.0, 80000.0],
                     [ 2000.0, 25000.0,  6000.0, 40000.0],
@@ -361,7 +411,7 @@ with tab2:
             df_Z = st.data_editor(pd.DataFrame(z_pad, index=setores_ativos, columns=setores_ativos), use_container_width=True, key="editor_Z_manual")
 
             st.subheader(f"2. Valor da Produção Total Setorial ($x_j$) — [{unidade_monetaria}]")
-            df_X = st.data_editor(pd.DataFrame(x_pad, index=["Produção Total (x_j)"], columns=setores_ativos), use_container_width=True, key="editor_X_manual")
+            df_X = st.data_editor(pd.DataFrame(x_pad, index=list(("Produção Total (x_j)",)), columns=setores_ativos), use_container_width=True, key="editor_X_manual")
 
     if "df_Z" in locals() and "df_X" in locals():
         setores_finais = df_Z.columns.tolist()
