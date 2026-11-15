@@ -114,7 +114,7 @@ tab0, tab1, tab2, tab3, tab4 = st.tabs([
 with tab0:
     st.header("0️⃣ Ferramenta de Agregação Automática (TRU 128×68 ou MIP 68×68)")
     st.markdown("""
-    Carregue sua tabela completa do **IBGE ou NEREUS**. Selecione apenas os setores/produtos pertencentes à cadeia produtiva de interesse; o sistema somará automaticamente o restante em **"Demais Setores Agregados"**.
+    Carregue sua tabela completa do **IBGE ou NEREUS**. Marque nas caixas de seleção abaixo quais setores/produtos deseja manter desagregados; o sistema somará automaticamente todos os demais na linha e coluna **"Outros"**.
     """)
 
     tipo_tabela = st.radio(
@@ -137,16 +137,16 @@ with tab0:
     if up_full_Z is None:
         if st.button("🧪 Carregar Exemplo Sintético (128×68 ou 68×68) para Testar Agregador"):
             setores_sim = [f"Setor_{i:02d}" for i in range(1, 69)]
-            setores_sim[0] = "Extração de Petróleo e Gás"
-            setores_sim[1] = "Fabricação de Resinas e Químicos"
-            setores_sim[2] = "Fabricação de Tintas e Vernizes"
+            setores_sim = "Extração de Petróleo e Gás"
+            setores_sim = "Fabricação de Resinas e Químicos"
+            setores_sim = "Fabricação de Tintas e Vernizes"
 
             np.random.seed(42)
             if "128 × 68" in tipo_tabela:
                 prods_sim = [f"Produto_{i:03d}" for i in range(1, 129)]
-                prods_sim[0] = "Petróleo bruto e gás natural"
-                prods_sim[1] = "Resinas plásticas e elastômeros"
-                prods_sim[2] = "Tintas, vernizes, esmaltes e lacas"
+                prods_sim = "Petróleo bruto e gás natural"
+                prods_sim = "Resinas plásticas e elastômeros"
+                prods_sim = "Tintas, vernizes, esmaltes e lacas"
                 st.session_state["sim_Z_full"] = pd.DataFrame(np.random.uniform(10, 500, (128, 68)), index=prods_sim, columns=setores_sim)
             else:
                 st.session_state["sim_Z_full"] = pd.DataFrame(np.random.uniform(10, 500, (68, 68)), index=setores_sim, columns=setores_sim)
@@ -172,32 +172,91 @@ with tab0:
         st.error(f"Erro ao ler os arquivos carregados: {e}")
 
     if df_Z_raw is not None:
-        st.success(f"✅ Matriz carregada com dimensão: **{df_Z_raw.shape[0]} linhas × {df_Z_raw.shape[1]} colunas**.")
+        st.success(f"✅ Matriz carregada com dimensão: **{df_Z_raw.shape} linhas × {df_Z_raw.shape} colunas**.")
         todas_linhas = df_Z_raw.index.tolist()
         todas_colunas = df_Z_raw.columns.tolist()
 
+        st.subheader("Selecione nos quadros abaixo os itens a manter desagregados")
+        st.caption("Todos os itens desmarcados serão somados automaticamente na linha e coluna **'Outros'**.")
+
+        # ==========================================================
+        # QUADROS DE SELEÇÃO (CHECKBOXES EM DATA_EDITOR)
+        # ==========================================================
         if "Setor × Setor" in tipo_tabela:
             opcoes = [c for c in todas_colunas if c in todas_linhas] or todas_colunas
-            padrao_sel = [s for s in ["Extração de Petróleo e Gás", "Fabricação de Resinas e Químicos", "Fabricação de Tintas e Vernizes"] if s in opcoes] or opcoes[:3]
-            escolhidos = st.multiselect("Setores de Interesse para manter desagregados:", options=opcoes, default=padrao_sel)
-            linhas_escolhidas = colunas_escolhidas = escolhidos
-        else:
-            c1, c2 = st.columns(2)
-            with c1:
-                padrao_p = [p for p in ["Petróleo bruto e gás natural", "Resinas plásticas e elastômeros", "Tintas, vernizes, esmaltes e lacas"] if p in todas_linhas] or todas_linhas[:3]
-                linhas_escolhidas = st.multiselect("Produtos (Linhas - 128):", options=todas_linhas, default=padrao_p)
-            with c2:
-                padrao_s = [s for s in ["Extração de Petróleo e Gás", "Fabricação de Resinas e Químicos", "Fabricação de Tintas e Vernizes"] if s in todas_colunas] or todas_colunas[:3]
-                colunas_escolhidas = st.multiselect("Setores correspondentes (Colunas - 68):", options=todas_colunas, default=padrao_s)
+            padrao_sel = ["Extração de Petróleo e Gás", "Fabricação de Resinas e Químicos", "Fabricação de Tintas e Vernizes"]
+            
+            df_quadro_setores = pd.DataFrame({
+                "Manter Desagregado?": [s in padrao_sel for s in opcoes],
+                "Setor (Linha e Coluna)": opcoes
+            })
+            # Se nenhum do exemplo existir, marca os 3 primeiros por padrão
+            if not df_quadro_setores["Manter Desagregado?"].any() and len(opcoes) >= 3:
+                df_quadro_setores.loc[:2, "Manter Desagregado?"] = True
 
-        nome_grupo_agregado = st.text_input("Nome do setor residual agregado:", value="Demais Setores Agregados")
+            df_sel_s = st.data_editor(
+                df_quadro_setores,
+                hide_index=True,
+                use_container_width=True,
+                height=320,
+                disabled=["Setor (Linha e Coluna)"],
+                key="quadro_sel_sxs"
+            )
+            escolhidos = df_sel_s[df_sel_s["Manter Desagregado?"] == True]["Setor (Linha e Coluna)"].tolist()
+            linhas_escolhidas = escolhidos
+            colunas_escolhidas = escolhidos
+
+        else:
+            col_q1, col_q2 = st.columns(2)
+            with col_q1:
+                st.markdown("**Quadro 1: Produtos (Linhas - 128)**")
+                padrao_p = ["Petróleo bruto e gás natural", "Resinas plásticas e elastômeros", "Tintas, vernizes, esmaltes e lacas"]
+                df_quadro_prod = pd.DataFrame({
+                    "Selecionar": [p in padrao_p for p in todas_linhas],
+                    "Produto (Linha)": todas_linhas
+                })
+                if not df_quadro_prod["Selecionar"].any() and len(todas_linhas) >= 3:
+                    df_quadro_prod.loc[:2, "Selecionar"] = True
+
+                df_sel_p = st.data_editor(
+                    df_quadro_prod,
+                    hide_index=True,
+                    use_container_width=True,
+                    height=320,
+                    disabled=["Produto (Linha)"],
+                    key="quadro_sel_prod"
+                )
+                linhas_escolhidas = df_sel_p[df_sel_p["Selecionar"] == True]["Produto (Linha)"].tolist()
+
+            with col_q2:
+                st.markdown("**Quadro 2: Setores Correspondentes (Colunas - 68)**")
+                padrao_s = ["Extração de Petróleo e Gás", "Fabricação de Resinas e Químicos", "Fabricação de Tintas e Vernizes"]
+                df_quadro_set = pd.DataFrame({
+                    "Selecionar": [s in padrao_s for s in todas_colunas],
+                    "Setor (Coluna)": todas_colunas
+                })
+                if not df_quadro_set["Selecionar"].any() and len(todas_colunas) >= 3:
+                    df_quadro_set.loc[:2, "Selecionar"] = True
+
+                df_sel_c = st.data_editor(
+                    df_quadro_set,
+                    hide_index=True,
+                    use_container_width=True,
+                    height=320,
+                    disabled=["Setor (Coluna)"],
+                    key="quadro_sel_set"
+                )
+                colunas_escolhidas = df_sel_c[df_sel_c["Selecionar"] == True]["Setor (Coluna)"].tolist()
+
+        # Nome fixo "Outros" para a agregação dos não selecionados
+        nome_grupo_agregado = "Outros"
 
         if len(linhas_escolhidas) > 0 and len(linhas_escolhidas) == len(colunas_escolhidas):
             df_Z_agg = agregar_matriz_retangular_ou_quadrada(df_Z_raw, linhas_escolhidas, colunas_escolhidas, nome_grupo_agregado)
             setores_finais_agg = df_Z_agg.columns.tolist()
             df_Z_agg.index = setores_finais_agg
 
-            st.subheader(f"Pré-visualização da Matriz Z Agregada ({df_Z_agg.shape[0]} × {df_Z_agg.shape[1]})")
+            st.subheader(f"Pré-visualização da Matriz Z Agregada ({df_Z_agg.shape} × {df_Z_agg.shape})")
             st.dataframe(df_Z_agg.style.format("{:,.2f}"), use_container_width=True)
 
             df_X_agg = None
@@ -218,9 +277,11 @@ with tab0:
                     st.session_state["agg_X"] = df_X_agg
                 if df_B_agg is not None:
                     st.session_state["agg_B"] = df_B_agg
-                st.success("✅ Dados transferidos com sucesso! Avance para as abas **FT1, FT2, FT3 e FT4**.")
-        elif len(linhas_escolhidas) != len(colunas_escolhidas):
-            st.error(f"⚠️ Selecione a mesma quantidade de linhas ({len(linhas_escolhidas)}) e colunas ({len(colunas_escolhidas)}) para formar uma matriz quadrada.")
+                st.success("✅ Dados transferidos com sucesso (demais itens agrupados em 'Outros')! Avance para as abas **FT1, FT2, FT3 e FT4**.")
+        elif len(linhas_escolhidas) == 0:
+            st.warning("⚠️ Marque pelo menos 1 item nos quadros acima para gerar a matriz agregada.")
+        else:
+            st.error(f"⚠️ Selecione a mesma quantidade de Produtos ({len(linhas_escolhidas)}) e Setores ({len(colunas_escolhidas)}) para formar uma matriz quadrada.")
 
 # ==========================================
 # FLUXO DE TRABALHO 1 (FT1)
