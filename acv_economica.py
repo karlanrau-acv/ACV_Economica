@@ -25,7 +25,7 @@ def ler_tabela_upload(arquivo, tem_indice=True, tem_coluna_codigo_produto=False)
     """Lê arquivos .xlsx ou .csv preservando zeros à esquerda e evitando duplicação de código no nome."""
     nome = arquivo.name.lower()
     if tem_coluna_codigo_produto:
-        idx_col =
+        idx_col = [0, 1]
         conversores = {0: str, 1: str}  # Força leitura como texto para não perder zeros à esquerda
     else:
         idx_col = 0 if tem_indice else None
