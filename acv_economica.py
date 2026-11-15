@@ -3,20 +3,21 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import re
 
-st.set_page_config(
-    page_title="Plataforma ACV Econômica (MIP/TRU)",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+def extrair_codigo_4digitos(texto):
+    """Extrai os 4 primeiros dígitos numéricos de um código de produto (5 dígitos) ou setor (4 dígitos)."""
+    numeros = re.sub(r"\D", "", str(texto))
+    return numeros[:4] if len(numeros) >= 4 else ""
 
-# ==========================================
-# FUNÇÕES AUXILIARES DE IMPORTAÇÃO E AGREGAÇÃO
-# ==========================================
-def ler_tabela_upload(arquivo, tem_indice=True):
+def ler_tabela_upload(arquivo, tem_indice=True, tem_coluna_codigo_produto=False):
+    """Lê arquivos .xlsx ou .csv tratando separadores brasileiros e opcionalmente uma coluna extra de código."""
     nome = arquivo.name.lower()
-    idx_col = 0 if tem_indice else None
+    if tem_coluna_codigo_produto:
+        idx_col = [0, 1]
+    else:
+        idx_col = 0 if tem_indice else None
+
     if nome.endswith(".xlsx") or nome.endswith(".xls"):
         df = pd.read_excel(arquivo, index_col=idx_col)
     else:
@@ -24,10 +25,18 @@ def ler_tabela_upload(arquivo, tem_indice=True):
         sep = ";" if conteudo.count(";") > conteudo.count(",") else ","
         decimal = "," if sep == ";" else "."
         df = pd.read_csv(io.StringIO(conteudo), sep=sep, decimal=decimal, index_col=idx_col)
+
     df.columns = [str(c).strip() for c in df.columns]
-    if tem_indice:
+
+    if tem_coluna_codigo_produto and isinstance(df.index, pd.MultiIndex):
+        codigos = [str(idx).strip() for idx in df.index]
+        nomes = [str(idx).strip() for idx in df.index]
+        df.index = [f"{c} - {n}" if c and c != "nan" else n for c, n in zip(codigos, nomes)]
+    elif tem_indice:
         df.index = [str(i).strip() for i in df.index]
+
     return df
+
 
 def gerar_template_excel(setores_lista):
     n = len(setores_lista)
@@ -108,33 +117,29 @@ with st.sidebar:
 st.title("📊 Avaliação do Ciclo de Vida Baseada em Dados Econômicos")
 st.markdown("Agregação de tabelas **IBGE / NEREUS** e quantificação do inventário ambiental via **Matriz Insumo-Produto**.")
 
-tab0, tab1, tab2, tab3, tab4 = st.tabs([
-    "0️⃣ Agregador TRU / MIP (IBGE/NEREUS)",
-    "1️⃣ FT1: Escopo e Demanda (y_s)",
-    "2️⃣ FT2: Matriz Econômica (Z, A e L)",
-    "3️⃣ FT3: Matriz Ambiental (B e R_s)",
-    "4️⃣ FT4: Cálculo e Interpretação (q)"
-])
-
-# ==========================================
-# ABA 0: AGREGADOR AUTOMÁTICO (68x68 ou 128x68)
-# ==========================================
 with tab0:
     st.header("0️⃣ Ferramenta de Agregação Automática (TRU 128×68 ou MIP 68×68)")
     st.markdown("""
     Carregue sua tabela completa do **IBGE ou NEREUS**. 
-    * Na **TRU (128 × 68)**, marque os setores de interesse no **Quadro 1** e vincule **um ou mais produtos** a cada setor no **Quadro 2**.
-    * Todos os setores desmarcados e produtos deixados como **"Outros"** serão somados automaticamente na linha e coluna **"Outros"**.
+    * Se a sua tabela tiver o **código do produto na 1ª coluna** e o **código do setor no cabeçalho**, o sistema identificará e somará automaticamente todos os produtos pertencentes a cada setor selecionado!
     """)
 
-    tipo_tabela = st.radio(
-        "Formato da tabela de fluxos intermediários (Z):",
-        options=[
-            "Tabela de Recursos e Usos — Produto × Setor (128 × 68)",
-            "Matriz Quadrada — Setor × Setor (68 × 68)"
-        ],
-        horizontal=True
-    )
+    c_tipo, c_cod = st.columns([1.5, 1])
+    with c_tipo:
+        tipo_tabela = st.radio(
+            "Formato da tabela de fluxos intermediários (Z):",
+            options=[
+                "Tabela de Recursos e Usos — Produto × Setor (128 × 68)",
+                "Matriz Quadrada — Setor × Setor (68 × 68)"
+            ],
+            horizontal=True
+        )
+    with c_cod:
+        possui_col_codigo = st.checkbox(
+            "A 1ª coluna da planilha contém o Código do Produto (e a 2ª o Nome)?",
+            value=True,
+            help="Marque se a planilha tem 2 colunas de identificação à esquerda (ex: Coluna A = Código 06801, Coluna B = Nome do Produto)."
+        )
 
     col_agg1, col_agg2, col_agg3 = st.columns(3)
     with col_agg1:
@@ -145,24 +150,21 @@ with tab0:
         up_full_B = st.file_uploader("3. Matriz Ambiental B (m×68) [Opcional]", type=["csv", "xlsx"], key="up_full_b")
 
     if up_full_Z is None:
-        if st.button("🧪 Carregar Exemplo Sintético (128×68 ou 68×68) para Testar Agregador"):
-            setores_sim = [f"Setor_{i:02d}" for i in range(1, 69)]
-            setores_sim = "Extração de Petróleo e Gás"
-            setores_sim = "Fabricação de Resinas e Químicos"
-            setores_sim = "Fabricação de Tintas e Vernizes"
+        if st.button("🧪 Carregar Exemplo Sintético com Códigos IBGE (128×68) para Testar"):
+            setores_sim = [f"{i:04d} - Setor_{i:02d}" for i in range(1, 69)]
+            setores_sim = "0680 - Extração de Petróleo e Gás"
+            setores_sim = "2010 - Fabricação de Resinas e Químicos"
+            setores_sim = "2091 - Fabricação de Tintas e Vernizes"
 
             np.random.seed(42)
-            if "128 × 68" in tipo_tabela:
-                prods_sim = [f"Produto_{i:03d}" for i in range(1, 129)]
-                prods_sim = "Petróleo bruto"
-                prods_sim = "Gás natural"
-                prods_sim = "Resinas termoplásticas"
-                prods_sim = "Solventes e aditivos químicos"
-                prods_sim = "Tintas e vernizes"
-                st.session_state["sim_Z_full"] = pd.DataFrame(np.random.uniform(10, 500, (128, 68)), index=prods_sim, columns=setores_sim)
-            else:
-                st.session_state["sim_Z_full"] = pd.DataFrame(np.random.uniform(10, 500, (68, 68)), index=setores_sim, columns=setores_sim)
+            prods_sim = [f"{(i % 68) + 1:04d}1 - Produto_{i:03d}" for i in range(1, 129)]
+            prods_sim = "06801 - Petróleo bruto"
+            prods_sim = "06802 - Gás natural"
+            prods_sim = "20101 - Resinas termoplásticas"
+            prods_sim = "20102 - Solventes e aditivos químicos"
+            prods_sim = "20911 - Tintas e vernizes"
 
+            st.session_state["sim_Z_full"] = pd.DataFrame(np.random.uniform(10, 500, (128, 68)), index=prods_sim, columns=setores_sim)
             st.session_state["sim_X_full"] = pd.DataFrame([np.random.uniform(40000, 150000, 68)], index=["Producao_Total"], columns=setores_sim)
             df_b_sim = pd.DataFrame(np.random.uniform(100, 10000, (2, 68)), columns=setores_sim)
             df_b_sim.insert(0, "Aspecto Ambiental (Unidade)", ["Emissões GEE (t CO2eq)", "Consumo de Energia (GJ)"])
@@ -171,7 +173,8 @@ with tab0:
     df_Z_raw, df_X_raw, df_B_raw = None, None, None
     try:
         if up_full_Z is not None:
-            df_Z_raw = ler_tabela_upload(up_full_Z, tem_indice=True)
+            usar_duas_cols = possui_col_codigo and ("128 × 68" in tipo_tabela)
+            df_Z_raw = ler_tabela_upload(up_full_Z, tem_indice=True, tem_coluna_codigo_produto=usar_duas_cols)
             if up_full_X is not None:
                 df_X_raw = ler_tabela_upload(up_full_X, tem_indice=True)
             if up_full_B is not None:
@@ -192,13 +195,11 @@ with tab0:
         if "Setor × Setor" in tipo_tabela:
             st.subheader("Selecione nos quadros abaixo os setores a manter desagregados")
             opcoes = [c for c in todas_colunas if c in todas_linhas] or todas_colunas
-            padrao_sel = ["Extração de Petróleo e Gás", "Fabricação de Resinas e Químicos", "Fabricação de Tintas e Vernizes"]
-
             df_quadro_setores = pd.DataFrame({
-                "Manter Desagregado?": [s in padrao_sel for s in opcoes],
+                "Manter Desagregado?": [False] * len(opcoes),
                 "Setor (Linha e Coluna)": opcoes
             })
-            if not df_quadro_setores["Manter Desagregado?"].any() and len(opcoes) >= 3:
+            if len(opcoes) >= 3:
                 df_quadro_setores.loc[:2, "Manter Desagregado?"] = True
 
             df_sel_s = st.data_editor(
@@ -216,12 +217,11 @@ with tab0:
             col_q1, col_q2 = st.columns([1, 1.3])
             with col_q1:
                 st.markdown("**1º Passo: Marque os Setores (Colunas - 68)**")
-                padrao_s = ["Extração de Petróleo e Gás", "Fabricação de Resinas e Químicos", "Fabricação de Tintas e Vernizes"]
                 df_quadro_set = pd.DataFrame({
-                    "Selecionar": [s in padrao_s for s in todas_colunas],
+                    "Selecionar": [False] * len(todas_colunas),
                     "Setor (Coluna)": todas_colunas
                 })
-                if not df_quadro_set["Selecionar"].any() and len(todas_colunas) >= 3:
+                if len(todas_colunas) >= 3:
                     df_quadro_set.loc[:2, "Selecionar"] = True
 
                 df_sel_c = st.data_editor(
@@ -235,25 +235,33 @@ with tab0:
                 colunas_escolhidas = df_sel_c[df_sel_c["Selecionar"] == True]["Setor (Coluna)"].tolist()
 
             with col_q2:
-                st.markdown("**2º Passo: Vincule 1 ou mais Produtos (Linhas - 128) a cada Setor**")
+                st.markdown("**2º Passo: Produtos Associados Automaticamente pelo Código (Editável)**")
                 opcoes_destino = [nome_grupo_agregado] + colunas_escolhidas
 
-                # Preenchimento ilustrativo para o exemplo sintético (mostrando 2 produtos somados em 1 setor)
-                mapa_exemplo = {
-                    "Petróleo bruto": "Extração de Petróleo e Gás",
-                    "Gás natural": "Extração de Petróleo e Gás",
-                    "Resinas termoplásticas": "Fabricação de Resinas e Químicos",
-                    "Solventes e aditivos químicos": "Fabricação de Resinas e Químicos",
-                    "Tintas e vernizes": "Fabricação de Tintas e Vernizes"
-                }
-                destinos_iniciais = [
-                    mapa_exemplo[p] if p in mapa_exemplo and mapa_exemplo[p] in colunas_escolhidas else nome_grupo_agregado
-                    for p in todas_linhas
-                ]
+                # Mapeia o código de 4 dígitos de cada setor selecionado -> nome completo do setor
+                cod_para_setor = {}
+                for s in colunas_escolhidas:
+                    cod4 = extrair_codigo_4digitos(s)
+                    if cod4:
+                        cod_para_setor[cod4] = s
+
+                # Associa automaticamente cada produto (5 dígitos) ao setor (4 dígitos iniciais)
+                destinos_auto = []
+                qtd_associados = 0
+                for p in todas_linhas:
+                    cod4_prod = extrair_codigo_4digitos(p)
+                    if cod4_prod in cod_para_setor:
+                        destinos_auto.append(cod_para_setor[cod4_prod])
+                        qtd_associados += 1
+                    else:
+                        destinos_auto.append(nome_grupo_agregado)
+
+                if qtd_associados > 0:
+                    st.caption(f"🔗 **{qtd_associados} produto(s)** vinculados automaticamente pelos 4 primeiros dígitos do código!")
 
                 df_quadro_prod = pd.DataFrame({
-                    "Produto (Linha)": todas_linhas,
-                    "Somar no Setor:": destinos_iniciais
+                    "Produto (Código e Descrição)": todas_linhas,
+                    "Somar no Setor:": destinos_auto
                 })
 
                 df_sel_p = st.data_editor(
@@ -261,24 +269,23 @@ with tab0:
                     hide_index=True,
                     use_container_width=True,
                     height=350,
-                    disabled=["Produto (Linha)"],
+                    disabled=["Produto (Código e Descrição)"],
                     column_config={
                         "Somar no Setor:": st.column_config.SelectboxColumn(
                             "Somar no Setor:",
-                            help="Escolha a qual setor este produto pertence. Produtos marcados como 'Outros' serão somados na linha 'Outros'.",
+                            help="Vinculado automaticamente pelo código. Você pode alterar manualmente se desejar.",
                             options=opcoes_destino,
                             required=True
                         )
                     },
                     key="quadro_map_prod_pxs"
                 )
-                mapa_linhas = dict(zip(df_sel_p["Produto (Linha)"], df_sel_p["Somar no Setor:"]))
+                mapa_linhas = dict(zip(df_sel_p["Produto (Código e Descrição)"], df_sel_p["Somar no Setor:"]))
 
         if len(colunas_escolhidas) > 0:
-            # Verifica se todos os setores selecionados receberam pelo menos 1 produto (no modo 128x68)
             setores_sem_produto = [s for s in colunas_escolhidas if s not in mapa_linhas.values()]
             if "128 × 68" in tipo_tabela and len(setores_sem_produto) > 0:
-                st.warning(f"⚠️ Os seguintes setores selecionados ainda não têm nenhum produto vinculado no Quadro 2 (ficarão com linha zerada): **{', '.join(setores_sem_produto)}**")
+                st.warning(f"⚠️ Os seguintes setores selecionados não têm nenhum produto vinculado no Quadro 2: **{', '.join(setores_sem_produto)}**")
 
             df_Z_agg = agregar_matriz_com_mapeamento(df_Z_raw, mapa_linhas, colunas_escolhidas, nome_grupo_agregado)
             setores_finais_agg = df_Z_agg.columns.tolist()
@@ -302,11 +309,11 @@ with tab0:
                 st.session_state["agg_Z"] = df_Z_agg
                 if df_X_agg is not None:
                     st.session_state["agg_X"] = df_X_agg
-                if df_B_agg is not None:
+                               if df_B_agg is not None:
                     st.session_state["agg_B"] = df_B_agg
                 st.success("✅ Dados transferidos com sucesso (demais itens agrupados em 'Outros')! Avance para as abas **FT1, FT2, FT3 e FT4**.")
         else:
-             st.warning("⚠️ Marque pelo menos 1 setor no quadro acima para gerar a matriz agregada.")
+            st.warning("⚠️ Marque pelo menos 1 setor no quadro acima para gerar a matriz agregada.")
 
 # ==========================================
 # FLUXO DE TRABALHO 1 (FT1)
