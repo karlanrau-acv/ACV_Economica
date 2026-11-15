@@ -309,7 +309,7 @@ with tab0:
                 st.session_state["agg_Z"] = df_Z_agg
                 if df_X_agg is not None:
                     st.session_state["agg_X"] = df_X_agg
-                               if df_B_agg is not None:
+                if df_B_agg is not None:
                     st.session_state["agg_B"] = df_B_agg
                 st.success("✅ Dados transferidos com sucesso (demais itens agrupados em 'Outros')! Avance para as abas **FT1, FT2, FT3 e FT4**.")
         else:
