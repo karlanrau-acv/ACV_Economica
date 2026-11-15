@@ -117,6 +117,14 @@ with st.sidebar:
 st.title("📊 Avaliação do Ciclo de Vida Baseada em Dados Econômicos")
 st.markdown("Agregação de tabelas **IBGE / NEREUS** e quantificação do inventário ambiental via **Matriz Insumo-Produto**.")
 
+tab0, tab1, tab2, tab3, tab4 = st.tabs([
+    "0️⃣ Agregador TRU / MIP (IBGE/NEREUS)",
+    "1️⃣ FT1: Escopo e Demanda (y_s)",
+    "2️⃣ FT2: Matriz Econômica (Z, A e L)",
+    "3️⃣ FT3: Matriz Ambiental (B e R_s)",
+    "4️⃣ FT4: Cálculo e Interpretação (q)"
+])
+
 with tab0:
     st.header("0️⃣ Ferramenta de Agregação Automática (TRU 128×68 ou MIP 68×68)")
     st.markdown("""
