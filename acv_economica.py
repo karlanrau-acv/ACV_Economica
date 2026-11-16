@@ -119,34 +119,48 @@ with st.sidebar:
 
 import base64
 
-def renderizar_logo_nitido(caminho_imagem, largura_px=155, texto_fallback=""):
-    """Exibe o logotipo em alta nitidez dentro de um card branco com bordas arredondadas."""
-    try:
-        with open(caminho_imagem, "rb") as img_file:
-            b64_str = base64.b64encode(img_file.read()).decode()
-        html_logo = f"""
-        <div style="background-color: #ffffff; padding: 10px 14px; border-radius: 10px; 
-                    border: 1px solid #e0e0e0; display: flex; justify-content: center; 
-                    align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.06);">
-            <img src="data:image/png;base64,{b64_str}" style="width: {largura_px}px; height: auto; object-fit: contain;">
-        </div>
-        """
-        st.markdown(html_logo, unsafe_allow_html=True)
-    except Exception:
-        st.caption(texto_fallback)
+from PIL import Image
+import os
+
+def carregar_logo_seguro(nome_arquivo, largura_px=150):
+    """Abre a imagem, converte CMYK/transparência para RGB sobre fundo branco e exibe com nitidez."""
+    # Procura o arquivo na raiz ou em pastas comuns (assets/images)
+    caminhos_possiveis = [
+        nome_arquivo,
+        nome_arquivo.replace(".png", ".PNG"),
+        nome_arquivo.replace(".png", ".jpg"),
+        nome_arquivo.replace(".png", ".jpeg"),
+        os.path.join("assets", nome_arquivo),
+        os.path.join("images", nome_arquivo),
+    ]
+    caminho_encontrado = next((c for c in caminhos_possiveis if os.path.exists(c)), None)
+
+    if caminho_encontrado is None:
+        st.warning(f"Arquivo '{nome_arquivo}' não encontrado. Arquivos na pasta: {os.listdir('.')}")
+        return
+
+    img = Image.open(caminho_encontrado)
+    # Se tiver transparência (RGBA/LA), cola sobre fundo branco sólido
+    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+        fundo_branco = Image.new("RGBA", img.size, (255, 255, 255, 255))
+        img_rgba = img.convert("RGBA")
+        img = Image.alpha_composite(fundo_branco, img_rgba).convert("RGB")
+    else:
+        img = img.convert("RGB")
+
+    st.image(img, width=largura_px)
 
 col_logo1, col_titulo, col_logo2 = st.columns([1.2, 4.6, 1.2], vertical_alignment="center")
 
 with col_logo1:
-    renderizar_logo_nitido("logo_ufsc.png", largura_px=145, texto_fallback="UFSC")
+    carregar_logo_seguro("logo_ufsc.png", largura_px=145)
 
 with col_titulo:
     st.title("📊 Avaliação do Ciclo de Vida Baseada em Dados Econômicos")
     st.markdown("Quantificação de inventário ambiental via **Matriz Insumo-Produto (MIP) / Tabela de Recursos e Usos (TRU)**.")
 
 with col_logo2:
-    renderizar_logo_nitido("logo_ifc.png", largura_px=155, texto_fallback="IFC")
-
+    carregar_logo_seguro("logo_ifc.png", largura_px=155)
 
 st.title("📊 Avaliação do Ciclo de Vida Baseada em Dados Econômicos")
 st.markdown("Quantificação de inventário ambiental via **Matriz Insumo-Produto (MIP) / Tabela de Recursos e Usos (TRU)**.")
