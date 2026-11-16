@@ -117,6 +117,25 @@ with st.sidebar:
         st.session_state.clear()
         st.rerun()
 
+# Cabeçalho institucional com logos e título centralizado
+col_logo1, col_titulo, col_logo2 = st.columns([1, 4, 1], vertical_alignment="center")
+
+with col_logo1:
+    try:
+        st.image("logo_ufsc.png", width=110)
+    except Exception:
+        st.caption("UFSC")
+
+with col_titulo:
+    st.title("📊 Avaliação do Ciclo de Vida Baseada em Dados Econômicos")
+    st.markdown("Quantificação de inventário ambiental via **Matriz Insumo-Produto (MIP) / Tabela de Recursos e Usos (TRU)**.")
+
+with col_logo2:
+    try:
+        st.image("logo_ifc.png", width=110)
+    except Exception:
+        st.caption("IFC")
+
 st.title("📊 Avaliação do Ciclo de Vida Baseada em Dados Econômicos")
 st.markdown("Quantificação de inventário ambiental via **Matriz Insumo-Produto (MIP) / Tabela de Recursos e Usos (TRU)**.")
 
