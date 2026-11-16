@@ -108,8 +108,8 @@ with st.sidebar:
     
     **Fluxos de Trabalho:**
     * **FT1:** Definir função e demanda final ($y_s$).
-    * **FT2:** Carregar/Agregar Matriz $Z$ e $x_j$ $\rightarrow$ obter $A$ e $L$.
-    * **FT3:** Inserir cargas ambientais ($B$) nos setores agregados $\rightarrow$ obter $R_s$.
+    * **FT2:** Carregar/Agregar Matriz $Z$ e $x_j$ $rightarrow$ obter $A$ e $L$.
+    * **FT3:** Inserir cargas ambientais ($B$) nos setores agregados $rightarrow$ obter $R_s$.
     * **FT4:** Quantificar $q$ e interpretar resultados.
     """)
     st.divider()
