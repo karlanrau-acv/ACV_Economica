@@ -100,41 +100,35 @@ def agregar_vetor_producao_x(df_X_full, colunas_Z_originais, setores_manter, nom
 # BARRA LATERAL
 # ==========================================
 with st.sidebar:
-    st.title("📊 ACV Econômica (MIP/TRU)")
-    st.markdown("""
-    Quantificação ambiental via **Matriz Insumo-Produto**:
-    
-    $$q = R_s \cdot (I - A)^{-1} \cdot y_s$$
-    
-    **Fluxos de Trabalho:**
-    * **FT1:** Definir função e demanda final ($y_s$).
-    * **FT2:** Carregar/Agregar Matriz $Z$ e $x_j$ $\rightarrow$ obter $A$ e $L$.
-    * **FT3:** Inserir cargas ambientais ($B$) nos setores agregados $\rightarrow$ obter $R_s$.
-    * **FT4:** Quantificar $q$ e interpretar resultados.
-    """)
-    st.divider()
-    if st.button("🔄 Restaurar Exemplo Padrão", use_container_width=True):
-        st.session_state.clear()
-        st.rerun()
+import base64
 
-# Cabeçalho institucional com logos e título centralizado
-col_logo1, col_titulo, col_logo2 = st.columns([1, 4, 1], vertical_alignment="center")
+def renderizar_logo_nitido(caminho_imagem, largura_px=155, texto_fallback=""):
+    """Exibe o logotipo em alta nitidez dentro de um card branco com bordas arredondadas."""
+    try:
+        with open(caminho_imagem, "rb") as img_file:
+            b64_str = base64.b64encode(img_file.read()).decode()
+        html_logo = f"""
+        <div style="background-color: #ffffff; padding: 10px 14px; border-radius: 10px; 
+                    border: 1px solid #e0e0e0; display: flex; justify-content: center; 
+                    align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.06);">
+            <img src="data:image/png;base64,{b64_str}" style="width: {largura_px}px; height: auto; object-fit: contain;">
+        </div>
+        """
+        st.markdown(html_logo, unsafe_allow_html=True)
+    except Exception:
+        st.caption(texto_fallback)
+
+col_logo1, col_titulo, col_logo2 = st.columns([1.2, 4.6, 1.2], vertical_alignment="center")
 
 with col_logo1:
-    try:
-        st.image("logo_ufsc.png", width=110)
-    except Exception:
-        st.caption("UFSC")
+    renderizar_logo_nitido("logo_ufsc.png", largura_px=145, texto_fallback="UFSC")
 
 with col_titulo:
     st.title("📊 Avaliação do Ciclo de Vida Baseada em Dados Econômicos")
     st.markdown("Quantificação de inventário ambiental via **Matriz Insumo-Produto (MIP) / Tabela de Recursos e Usos (TRU)**.")
 
 with col_logo2:
-    try:
-        st.image("logo_ifc.png", width=110)
-    except Exception:
-        st.caption("IFC")
+    renderizar_logo_nitido("logo_ifc.png", largura_px=155, texto_fallback="IFC")
 
 st.title("📊 Avaliação do Ciclo de Vida Baseada em Dados Econômicos")
 st.markdown("Quantificação de inventário ambiental via **Matriz Insumo-Produto (MIP) / Tabela de Recursos e Usos (TRU)**.")
