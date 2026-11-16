@@ -153,14 +153,14 @@ def carregar_logo_seguro(nome_arquivo, largura_px=150):
 col_logo1, col_titulo, col_logo2 = st.columns([1.2, 4.6, 1.2], vertical_alignment="center")
 
 with col_logo1:
-    carregar_logo_seguro("logo_ufsc.png", largura_px=145)
+    carregar_logo_seguro("UFSC.png", largura_px=145)
 
 with col_titulo:
     st.title("📊 Avaliação do Ciclo de Vida Baseada em Dados Econômicos")
     st.markdown("Quantificação de inventário ambiental via **Matriz Insumo-Produto (MIP) / Tabela de Recursos e Usos (TRU)**.")
 
 with col_logo2:
-    carregar_logo_seguro("logo_ifc.png", largura_px=155)
+    carregar_logo_seguro("IFC_1.png", largura_px=155)
 
 st.title("📊 Avaliação do Ciclo de Vida Baseada em Dados Econômicos")
 st.markdown("Quantificação de inventário ambiental via **Matriz Insumo-Produto (MIP) / Tabela de Recursos e Usos (TRU)**.")
