@@ -100,6 +100,23 @@ def agregar_vetor_producao_x(df_X_full, colunas_Z_originais, setores_manter, nom
 # BARRA LATERAL
 # ==========================================
 with st.sidebar:
+    st.title("📊 ACV Econômica (MIP/TRU)")
+    st.markdown("""
+    Quantificação ambiental via **Matriz Insumo-Produto**:
+    
+    $$q = R_s \cdot (I - A)^{-1} \cdot y_s$$
+    
+    **Fluxos de Trabalho:**
+    * **FT1:** Definir função e demanda final ($y_s$).
+    * **FT2:** Carregar/Agregar Matriz $Z$ e $x_j$ $\rightarrow$ obter $A$ e $L$.
+    * **FT3:** Inserir cargas ambientais ($B$) nos setores agregados $\rightarrow$ obter $R_s$.
+    * **FT4:** Quantificar $q$ e interpretar resultados.
+    """)
+    st.divider()
+    if st.button("🔄 Restaurar Exemplo Padrão", use_container_width=True):
+        st.session_state.clear()
+        st.rerun()
+
 import base64
 
 def renderizar_logo_nitido(caminho_imagem, largura_px=155, texto_fallback=""):
@@ -129,6 +146,7 @@ with col_titulo:
 
 with col_logo2:
     renderizar_logo_nitido("logo_ifc.png", largura_px=155, texto_fallback="IFC")
+
 
 st.title("📊 Avaliação do Ciclo de Vida Baseada em Dados Econômicos")
 st.markdown("Quantificação de inventário ambiental via **Matriz Insumo-Produto (MIP) / Tabela de Recursos e Usos (TRU)**.")
